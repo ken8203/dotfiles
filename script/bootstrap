@@ -1,0 +1,3 @@
+#!/bin/sh
+
+env RCRC=$HOME/dotfiles/rcrc rcup -v -d $HOME/dotfiles/zsh -d $HOME/dotfiles/tmux -d $HOME/dotfiles/vim -d $HOME/dotfiles/git -f

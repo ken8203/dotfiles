@@ -1,0 +1,9 @@
+*.pyc
+*.sw[nop]
+.DS_Store
+.bundle
+.env
+/log
+/node_modules/
+/tmp
+/vendor

@@ -1,0 +1,38 @@
+# Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
+# Initialization code that may require console input (password prompts, [y/n]
+# confirmations, etc.) must go above this block; everything else may go below.
+if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
+  source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
+fi
+
+export DOTFILES=$HOME/dotfiles
+
+if [ -d "$DOTFILES" ];
+then
+  # all of our zsh files
+  typeset -U config_files
+  config_files=($DOTFILES/**/*.zsh)
+
+  # load the path files
+  for file in ${(M)config_files:#*/path.zsh}
+  do
+    source $file
+  done
+
+  # load everything but the path and completion files
+  for file in ${${config_files:#*/path.zsh}:#*/completion.zsh}
+  do
+    source $file
+  done
+
+  # load every completion after autocomplete loads
+  for file in ${(M)config_files:#*/completion.zsh}
+  do
+    source $file
+  done
+
+  unset config_files
+fi
+
+# Local config
+[[ -f ~/.zshrc.local ]] && source ~/.zshrc.local
