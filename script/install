@@ -36,4 +36,18 @@ then
   brew install rcm
 fi
 
+# exa
+if test ! $(which exa)
+then
+  echo "Installing exa for you."
+  brew install exa
+fi
+
+# bat
+if test ! $(which bat)
+then
+  echo "Installing bat for you."
+  brew install bat
+fi
+
 exit 0
