@@ -1,22 +1,24 @@
 #!/bin/sh
 
 # vim-plug
-curl -fLo ~/.vim/autoload/plug.vim --create-dirs \
+if test ! -f "$HOME/.vim/autoload/plug.vim"
+then
+  echo "Installing vim-plug for you."
+  curl -fLo ~/.vim/autoload/plug.vim --create-dirs \
     https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
+fi
 
 # zim
-if test ! $(which zimfw)
+if ! [ -f $(which zimfw) ]
 then
-  echo "  Installing Zim for you."
-
+  echo "Installing Zim for you."
   curl -fsSL https://raw.githubusercontent.com/zimfw/install/master/install.zsh | zsh
 fi
 
 # homebrew
 if test ! $(which brew)
 then
-  echo "  Installing Homebrew for you."
-
+  echo "Installing Homebrew for you."
   # Install the correct homebrew for each OS type
   if test "$(uname)" = "Darwin"
   then
@@ -25,6 +27,13 @@ then
   then
     ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Linuxbrew/install/master/install)"
   fi
+fi
+
+# rcm
+if test ! $(which rcup)
+then
+  echo "Installing rcm for you."
+  brew install rcm
 fi
 
 exit 0
