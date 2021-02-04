@@ -1,3 +1,7 @@
+# zsh completions for brew
+fpath=(/usr/local/share/zsh/site-functions $fpath)
+ autoload -Uz compinit && compinit -i
+
 # Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
 # Initialization code that may require console input (password prompts, [y/n]
 # confirmations, etc.) must go above this block; everything else may go below.
