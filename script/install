@@ -50,4 +50,10 @@ then
   brew install bat
 fi
 
+if [ -z $(brew list | grep kube-ps1) ]
+then
+  echo "Installing kube-ps1 for you."
+  brew install kube-ps1
+fi
+
 exit 0
