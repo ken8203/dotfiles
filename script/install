@@ -56,4 +56,10 @@ then
   brew install kube-ps1
 fi
 
+if [ -z $(brew list | grep fzf) ]
+then
+  echo "Installing fzf for you."
+  brew install fzf
+fi
+
 exit 0
