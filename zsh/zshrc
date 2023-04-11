@@ -52,3 +52,6 @@ if [ -f '/Users/jaychung/google-cloud-sdk/path.zsh.inc' ]; then . '/Users/jaychu
 
 # The next line enables shell command completion for gcloud.
 if [ -f '/Users/jaychung/google-cloud-sdk/completion.zsh.inc' ]; then . '/Users/jaychung/google-cloud-sdk/completion.zsh.inc'; fi
+export PATH="/opt/homebrew/opt/gnu-getopt/bin:$PATH"
+
+export PATH=/Users/jaychung/.tiup/bin:$PATH
