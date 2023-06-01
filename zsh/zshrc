@@ -55,3 +55,8 @@ if [ -f '/Users/jaychung/google-cloud-sdk/completion.zsh.inc' ]; then . '/Users/
 export PATH="/opt/homebrew/opt/gnu-getopt/bin:$PATH"
 
 export PATH=/Users/jaychung/.tiup/bin:$PATH
+
+# pnpm
+export PNPM_HOME="/Users/jaychung/Library/pnpm"
+export PATH="$PNPM_HOME:$PATH"
+# pnpm end
