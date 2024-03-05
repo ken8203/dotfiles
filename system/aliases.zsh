@@ -1,6 +1,6 @@
-alias ls='exa'
-alias l='exa -lbF --git'
-alias ll='exa -lbGF --git'
+alias ls='eza'
+alias l='eza -lbF --git'
+alias ll='eza -lbGF --git'
 alias cat='bat'
 alias mkdir='mkdir -p'
 alias kc="kubectl"

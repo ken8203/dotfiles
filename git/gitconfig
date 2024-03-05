@@ -1,7 +1,6 @@
 [user]
   name = Jay Chung
   email = ken8203@gmail.com
-	signingKey = 9B75A5ADA0533AED18044A9F73C350F6920EA30D
 [push]
   default = current
 [color]
