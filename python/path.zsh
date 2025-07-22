@@ -1,4 +1,1 @@
-export PATH="/Users/jaychung/Library/Python/3.9/bin:$PATH"
-export PYENV_ROOT="$HOME/.pyenv"
-[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
-eval "$(pyenv init -)"
+export PATH="/opt/homebrew/bin/python3.11:/opt/homebrew/opt/python@3.11/libexec/bin:$PATH"
