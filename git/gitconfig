@@ -14,6 +14,9 @@
   pf = push --force-with-lease
   st = status
   br = branch
+	wta = "!f() { git worktree add -b \"$1\" \"../.tree/$1\"; }; f"
+	wtr = "!f() { git worktree remove \"../.tree/$1\"; }; f"
+	wtl = "!f() { git worktree list; }; f"
 [core]
   excludesfile = ~/.gitignore
   autocrlf = input
@@ -30,4 +33,4 @@
 [commit]
 	gpgsign = true
 [gpg]
-	program = /opt/homebrew/bin/gpg
+	program = gpg
