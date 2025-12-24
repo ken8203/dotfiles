@@ -5,9 +5,11 @@ font-size = 14
 # Window
 window-padding-x = 10
 window-padding-y = 10
+background-opacity = 0.9
+background-blur-radius = 20
 
 # Theme
-theme = catppuccin-mocha
+theme = Nord
 
 # Cursor
 cursor-style = block
