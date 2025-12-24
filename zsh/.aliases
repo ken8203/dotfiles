@@ -1,0 +1,30 @@
+# System
+alias ls='eza'
+alias l='eza -lbF --git'
+alias ll='eza -lbGF --git'
+alias cat='bat'
+alias mkdir='mkdir -p'
+alias reload="source ~/.zshrc && exec $SHELL -l"
+
+# Kubernetes
+alias kc="kubectl"
+alias kcx="kubectx"
+alias kcns="kubens"
+
+kcexec() {
+  kubectl exec -it $1 -- sh
+}
+
+# Docker
+alias dcu="docker-compose up"
+alias dcd="docker-compose down"
+
+# gcloud
+alias gal="gcloud auth login --update-adc"
+
+# Tools
+alias pn="pnpm"
+alias claude="$HOME/.claude/local/claude"
+
+# Local overrides
+[[ -f ~/.aliases.local ]] && source ~/.aliases.local

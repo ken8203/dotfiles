@@ -1,0 +1,19 @@
+# Homebrew
+export PATH="/opt/homebrew/bin:$PATH"
+
+# Go
+export GOPATH="$HOME/go"
+export PATH="$PATH:/usr/local/go/bin:$GOPATH/bin"
+
+# Rust
+export PATH="$HOME/.cargo/bin:$PATH"
+
+# Node (fnm)
+eval "$(fnm env --use-on-cd)"
+
+# pnpm
+export PNPM_HOME="$HOME/Library/pnpm"
+export PATH="$PNPM_HOME:$PATH"
+
+# Local overrides
+[[ -f ~/.paths.local ]] && source ~/.paths.local

@@ -1,6 +1,7 @@
 [user]
   name = Jay Chung
   email = ken8203@gmail.com
+  signingkey = F9DDEC8FB9E15DEF
 [push]
   default = current
 [color]
@@ -31,6 +32,6 @@
 [url "git@github.com:"]
 	insteadOf = https://github.com/
 [commit]
-	gpgsign = true
+	gpgsign = false
 [gpg]
 	program = gpg

@@ -1,3 +1,0 @@
-bindkey -v
-
-WORDCHARS=${WORDCHARS//[\/]}

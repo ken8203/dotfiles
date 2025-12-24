@@ -1,34 +1,48 @@
 # dotfiles
 
-> Inspired by [thoughtbot/dotfiles](https://github.com/thoughtbot/dotfiles) and [holman/dotfiles](https://github.com/holman/dotfiles)
+Managed with [GNU Stow](https://www.gnu.org/software/stow/).
 
-```shell
+## Install
+
+```bash
 git clone https://github.com/ken8203/dotfiles.git ~/dotfiles
-```
-
-## Requirements
-
-Set zsh as your login shell
-
-```
-chsh -s $(which zsh)
+cd ~/dotfiles && ./install.sh
 ```
 
 ## Usage
 
-### Prerequisites
+```bash
+cd ~/dotfiles
 
-- [vim-plug](https://github.com/junegunn/vim-plug)
-- [zim](https://github.com/zimfw/zimfw)
-- [homebrew](https://github.com/Homebrew/brew)
-- [rcm](https://github.com/thoughtbot/rcm)
+# Link all packages
+stow zsh git tmux ghostty
 
-```shell
-./dotfiles/script/install
+# Link single package
+stow zsh
+
+# Unlink package
+stow -D zsh
+
+# Re-link package
+stow --restow zsh
 ```
 
-### Install (or update) dotfiles
+## Structure
 
-```shell
-./dotfiles/script/boostrap
 ```
+~/dotfiles/
+├── zsh/
+│   ├── .zshrc
+│   ├── .aliases
+│   └── .paths
+├── git/.gitconfig, .gitignore
+├── tmux/.tmux.conf
+└── ghostty/.config/ghostty/config
+```
+
+## Stack
+
+- Terminal: [Ghostty](https://ghostty.org/)
+- Shell: zsh
+- Prompt: [Starship](https://starship.rs/)
+- Plugins: zsh-autosuggestions, zsh-syntax-highlighting

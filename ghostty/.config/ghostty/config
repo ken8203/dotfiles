@@ -1,0 +1,16 @@
+# Font
+font-family = JetBrains Mono
+font-size = 14
+
+# Window
+window-padding-x = 10
+window-padding-y = 10
+
+# Theme
+theme = catppuccin-mocha
+
+# Cursor
+cursor-style = block
+
+# macOS
+macos-option-as-alt = true
