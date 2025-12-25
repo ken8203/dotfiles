@@ -16,6 +16,6 @@ brew install stow starship zsh-autosuggestions zsh-syntax-highlighting eza bat f
 # Create symlinks
 echo "Creating symlinks..."
 cd ~/dotfiles
-stow zsh git tmux ghostty
+stow zsh git tmux ghostty starship
 
 echo "Done! Restart your terminal."

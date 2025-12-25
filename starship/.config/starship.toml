@@ -1,0 +1,12 @@
+# Right prompt
+right_format = '$kubernetes'
+
+# Hide gcloud account
+[gcloud]
+disabled = true
+
+# Kubernetes
+[kubernetes]
+disabled = false
+format = '[$symbol$context( \($namespace\))]($style)'
+style = 'cyan'

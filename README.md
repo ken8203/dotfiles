@@ -15,7 +15,7 @@ cd ~/dotfiles && ./install.sh
 cd ~/dotfiles
 
 # Link all packages
-stow zsh git tmux ghostty
+stow zsh git tmux ghostty starship
 
 # Link single package
 stow zsh
@@ -37,7 +37,8 @@ stow --restow zsh
 │   └── .paths
 ├── git/.gitconfig, .gitignore
 ├── tmux/.tmux.conf
-└── ghostty/.config/ghostty/config
+├── ghostty/.config/ghostty/config
+└── starship/.config/starship.toml
 ```
 
 ## Stack
