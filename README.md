@@ -15,7 +15,7 @@ cd ~/dotfiles && ./install.sh
 cd ~/dotfiles
 
 # Link all packages
-stow zsh git tmux ghostty starship
+./install.sh
 
 # Link single package
 stow zsh
@@ -38,12 +38,15 @@ stow --restow zsh
 ├── git/.gitconfig, .gitignore
 ├── tmux/.tmux.conf
 ├── ghostty/.config/ghostty/config
-└── starship/.config/starship.toml
+├── starship/.config/starship.toml
+└── vim/.vimrc, .vim/
 ```
 
 ## Stack
 
 - Terminal: [Ghostty](https://ghostty.org/)
 - Shell: zsh
+- Editor: vim
 - Prompt: [Starship](https://starship.rs/)
+- Theme: [Nord](https://www.nordtheme.com/)
 - Plugins: zsh-autosuggestions, zsh-syntax-highlighting
