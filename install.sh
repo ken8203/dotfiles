@@ -11,7 +11,7 @@ fi
 
 # Install dependencies
 echo "Installing dependencies..."
-brew install stow starship zsh-autosuggestions zsh-syntax-highlighting eza bat fnm
+brew bundle --file=~/dotfiles/Brewfile
 
 # Create symlinks
 echo "Creating symlinks..."
