@@ -6,6 +6,7 @@ setopt SHARE_HISTORY
 
 # Completion
 autoload -Uz compinit && compinit
+zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}'
 
 # Plugins (via Homebrew)
 source /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh
