@@ -5,6 +5,10 @@ right_format = '$kubernetes'
 [gcloud]
 disabled = true
 
+# Disable nodejs (fnm shim is slow)
+[nodejs]
+disabled = true
+
 # Kubernetes
 [kubernetes]
 disabled = false
