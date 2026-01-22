@@ -15,5 +15,7 @@ eval "$(fnm env --use-on-cd)"
 export PNPM_HOME="$HOME/Library/pnpm"
 export PATH="$PNPM_HOME:$PATH"
 
+export PATH="$HOME/.local/bin:$PATH"
+
 # Local overrides
 [[ -f ~/.paths.local ]] && source ~/.paths.local

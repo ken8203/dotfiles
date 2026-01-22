@@ -24,7 +24,6 @@ alias gal="gcloud auth login --update-adc"
 
 # Tools
 alias pn="pnpm"
-alias claude="$HOME/.claude/local/claude"
 
 # Local overrides
 [[ -f ~/.aliases.local ]] && source ~/.aliases.local
