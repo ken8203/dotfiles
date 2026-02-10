@@ -10,6 +10,7 @@ alias reload="source ~/.zshrc && exec $SHELL -l"
 alias kc="kubectl"
 alias kcx="kubectx"
 alias kcns="kubens"
+alias offlinepg="kubectl port-forward deploy/db-auth-proxy 5431:5432"
 
 kcexec() {
   kubectl exec -it $1 -- sh
