@@ -16,3 +16,4 @@ cursor-style = block
 
 # macOS
 macos-option-as-alt = true
+working-directory = inherit
