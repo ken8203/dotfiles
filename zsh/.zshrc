@@ -12,6 +12,14 @@ zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}'
 source /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh
 source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 
+# Report CWD via OSC 7 for terminal tab inheritance
+_osc7_chpwd() {
+  printf '\e]7;file://%s%s\a' "${HOST}" "${PWD}"
+}
+autoload -Uz add-zsh-hook
+add-zsh-hook chpwd _osc7_chpwd
+_osc7_chpwd
+
 # Load paths and aliases
 [[ -f ~/.paths ]] && source ~/.paths
 [[ -f ~/.aliases ]] && source ~/.aliases
