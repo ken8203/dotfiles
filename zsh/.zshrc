@@ -1,3 +1,7 @@
+# Claude Code
+export CLAUDE_CODE_NO_FLICKER=1
+export CLAUDE_CODE_DISABLE_1M_CONTEXT=1
+
 # History
 HISTFILE=~/.zsh_history
 HISTSIZE=10000
