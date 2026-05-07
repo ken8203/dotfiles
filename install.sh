@@ -16,6 +16,6 @@ brew bundle --file=~/dotfiles/Brewfile
 # Create symlinks
 echo "Creating symlinks..."
 cd ~/dotfiles
-stow zsh git tmux ghostty starship vim
+stow zsh git tmux ghostty starship vim bat
 
 echo "Done! Restart your terminal."
