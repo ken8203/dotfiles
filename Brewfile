@@ -12,5 +12,8 @@ brew "bat"
 brew "ripgrep"
 brew "ast-grep"
 
+# Git hooks
+brew "prek"
+
 # Runtime management
 brew "fnm"
