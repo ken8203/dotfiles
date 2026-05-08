@@ -39,6 +39,7 @@ stow --restow zsh
 ├── tmux/.tmux.conf
 ├── ghostty/.config/ghostty/config
 ├── starship/.config/starship.toml
+├── revdiff/.config/revdiff/config
 └── vim/.vimrc, .vim/
 ```
 

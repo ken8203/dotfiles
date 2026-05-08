@@ -27,6 +27,7 @@ alias gal="gcloud auth login --update-adc"
 alias pn="pnpm"
 alias authzed="/opt/homebrew/bin/zed"
 alias zed="/usr/local/bin/zed"
+alias rd="revdiff"
 
 # Local overrides
 [[ -f ~/.aliases.local ]] && source ~/.aliases.local

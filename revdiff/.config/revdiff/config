@@ -1,0 +1,9 @@
+[Application Options]
+theme = nord
+chroma-style = nord
+
+line-numbers = true
+word-diff = true
+wrap = true
+vim-motion = true
+cross-file-hunks = true

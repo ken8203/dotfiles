@@ -12,6 +12,10 @@ brew "bat"
 brew "ripgrep"
 brew "ast-grep"
 
+# Diff review
+tap "umputun/apps"
+brew "umputun/apps/revdiff"
+
 # Git hooks
 brew "prek"
 
