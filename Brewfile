@@ -21,3 +21,4 @@ brew "prek"
 
 # Runtime management
 brew "fnm"
+brew "pnpm"
