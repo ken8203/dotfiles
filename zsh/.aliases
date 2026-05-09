@@ -29,5 +29,117 @@ alias authzed="/opt/homebrew/bin/zed"
 alias zed="/usr/local/bin/zed"
 alias rd="revdiff"
 
+# Git
+# Remove worktrees and branches whose upstream was deleted on the remote
+# (covers squash/rebase merges, unlike `git branch --merged`).
+# Usage: git-clean-merged [-n|--dry-run] [-f|--force] [protected_regex]
+#   protected_regex defaults to: main|master|develop
+#   -n  print actions without executing
+#   -f  pass --force to `git worktree remove` (allows dirty worktrees)
+git-clean-merged() {
+  emulate -L zsh
+  setopt local_options pipe_fail
+
+  local dry_run=0 force=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -n|--dry-run) dry_run=1; shift ;;
+      -f|--force)   force=1;   shift ;;
+      --) shift; break ;;
+      -*) echo "Unknown flag: $1" >&2; return 2 ;;
+      *)  break ;;
+    esac
+  done
+  local protected="${1:-main|master|develop}"
+
+  if ! git rev-parse --git-dir >/dev/null 2>&1; then
+    echo "Not a git repository" >&2
+    return 1
+  fi
+
+  if (( dry_run )); then
+    echo "→ (dry-run) skipping fetch"
+  else
+    echo "→ git fetch --all --prune"
+    git fetch --all --prune || return $?
+  fi
+
+  local gone
+  gone=$(git for-each-ref --format='%(refname:short) %(upstream:track)' refs/heads \
+    | awk -v p="$protected" '$2=="[gone]" && $1 !~ "^("p")$" {print $1}')
+
+  if [[ -z "$gone" ]]; then
+    echo "Nothing to clean."
+    return 0
+  fi
+
+  # Refuse if currently on a branch slated for deletion (avoids removing our own worktree).
+  local current_branch
+  current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+  if [[ -n "$current_branch" && "$current_branch" != "HEAD" ]] \
+     && grep -qFx "$current_branch" <<< "$gone"; then
+    echo "Refusing: current branch '$current_branch' is in the cleanup list." >&2
+    echo "         Switch to a protected branch (e.g. main) first." >&2
+    return 1
+  fi
+
+  # Build branch -> worktree path map; parse porcelain by line to handle paths with spaces.
+  typeset -A wt_for_branch
+  local line wt_path=""
+  while IFS= read -r line; do
+    case "$line" in
+      "worktree "*)         wt_path="${line#worktree }" ;;
+      "branch refs/heads/"*) wt_for_branch[${line#branch refs/heads/}]="$wt_path" ;;
+    esac
+  done < <(git worktree list --porcelain)
+
+  local -i fail=0
+  local br path
+
+  echo "→ Worktrees"
+  while IFS= read -r br; do
+    [[ -z "$br" ]] && continue
+    path="${wt_for_branch[$br]:-}"
+    [[ -z "$path" ]] && continue
+    if (( dry_run )); then
+      echo "  would remove: $path ($br)"
+      continue
+    fi
+    local -a rm_args=(worktree remove)
+    (( force )) && rm_args+=(--force)
+    rm_args+=("$path")
+    if git "${rm_args[@]}"; then
+      echo "  removed: $path ($br)"
+    else
+      echo "  FAILED: $path ($br) — re-run with -f to force" >&2
+      (( fail++ ))
+    fi
+  done <<< "$gone"
+
+  echo "→ Branches"
+  while IFS= read -r br; do
+    [[ -z "$br" ]] && continue
+    path="${wt_for_branch[$br]:-}"
+    # Skip if worktree removal failed (dir still present).
+    if (( ! dry_run )) && [[ -n "$path" && -d "$path" ]]; then
+      echo "  skip: $br (worktree still present at $path)"
+      (( fail++ ))
+      continue
+    fi
+    if (( dry_run )); then
+      echo "  would delete: $br"
+      continue
+    fi
+    if git branch -D "$br"; then
+      echo "  deleted: $br"
+    else
+      echo "  FAILED: $br" >&2
+      (( fail++ ))
+    fi
+  done <<< "$gone"
+
+  return $fail
+}
+
 # Local overrides
 [[ -f ~/.aliases.local ]] && source ~/.aliases.local
