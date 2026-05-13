@@ -22,3 +22,7 @@ brew "prek"
 # Runtime management
 brew "fnm"
 brew "pnpm"
+
+# Observability
+tap "getsentry/tools"
+brew "getsentry/tools/sentry"
