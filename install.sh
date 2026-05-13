@@ -22,4 +22,13 @@ stow zsh git tmux ghostty starship vim bat revdiff
 echo "Installing git hooks..."
 prek install
 
+# Install Claude skills (managed by vercel-labs/skills)
+echo "Installing skills..."
+npx -y skills@latest add -g obra/superpowers \
+  --skill brainstorming,writing-plans,executing-plans,subagent-driven-development,systematic-debugging,using-superpowers \
+  --agent '*' -y
+npx -y skills@latest add -g upstash/context7 --skill find-docs --agent '*' -y
+npx -y skills@latest add -g vercel-labs/agent-browser --agent '*' -y
+npx -y skills@latest add -g https://cli.sentry.dev --agent '*' -y
+
 echo "Done! Restart your terminal."
