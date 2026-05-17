@@ -94,24 +94,24 @@ git-clean-merged() {
   done < <(git worktree list --porcelain)
 
   local -i fail=0
-  local br path
+  local br wt
 
   echo "→ Worktrees"
   while IFS= read -r br; do
     [[ -z "$br" ]] && continue
-    path="${wt_for_branch[$br]:-}"
-    [[ -z "$path" ]] && continue
+    wt="${wt_for_branch[$br]:-}"
+    [[ -z "$wt" ]] && continue
     if (( dry_run )); then
-      echo "  would remove: $path ($br)"
+      echo "  would remove: $wt ($br)"
       continue
     fi
     local -a rm_args=(worktree remove)
     (( force )) && rm_args+=(--force)
-    rm_args+=("$path")
+    rm_args+=("$wt")
     if git "${rm_args[@]}"; then
-      echo "  removed: $path ($br)"
+      echo "  removed: $wt ($br)"
     else
-      echo "  FAILED: $path ($br) — re-run with -f to force" >&2
+      echo "  FAILED: $wt ($br) — re-run with -f to force" >&2
       (( fail++ ))
     fi
   done <<< "$gone"
@@ -119,10 +119,10 @@ git-clean-merged() {
   echo "→ Branches"
   while IFS= read -r br; do
     [[ -z "$br" ]] && continue
-    path="${wt_for_branch[$br]:-}"
+    wt="${wt_for_branch[$br]:-}"
     # Skip if worktree removal failed (dir still present).
-    if (( ! dry_run )) && [[ -n "$path" && -d "$path" ]]; then
-      echo "  skip: $br (worktree still present at $path)"
+    if (( ! dry_run )) && [[ -n "$wt" && -d "$wt" ]]; then
+      echo "  skip: $br (worktree still present at $wt)"
       (( fail++ ))
       continue
     fi
