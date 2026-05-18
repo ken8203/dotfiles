@@ -1,0 +1,194 @@
+{
+  // ── Window / UI ────────────────────────────────────────────────
+  "proxy": "",
+  "cli_default_open_behavior": "existing_window",
+  "theme": "Ayu Mirage",
+  "icon_theme": "Catppuccin Mocha",
+  "buffer_font_family": "JetBrains Mono",
+  "buffer_font_size": 20,
+  "ui_font_size": 20,
+  "centered_layout": {
+    "left_padding": 0.15,
+    "right_padding": 0.15
+  },
+
+  // ── Editor ─────────────────────────────────────────────────────
+  "vim_mode": false,
+  "relative_line_numbers": "enabled",
+  "show_whitespaces": "selection",
+  "cursor_blink": true,
+  "current_line_highlight": "all",
+  "vertical_scroll_margin": 8,
+  "expand_excerpt_lines": 5,
+  "hover_popover_delay": 200,
+  "seed_search_query_from_cursor": "selection",
+  "show_wrap_guides": true,
+  "wrap_guides": [100],
+  "indent_guides": {
+    "enabled": true,
+    "coloring": "indent_aware"
+  },
+  "scrollbar": {
+    "show": "auto",
+    "git_diff": true,
+    "search_results": true,
+    "diagnostics": "all"
+  },
+  "minimap": {
+    "show": "auto",
+    "thumb": "hover"
+  },
+
+  // ── Save & Format ──────────────────────────────────────────────
+  "autosave": "on_focus_change",
+  "remove_trailing_whitespace_on_save": true,
+  "ensure_final_newline_on_save": true,
+  "format_on_save": "on",
+  "hard_tabs": false,
+  "tab_size": 2,
+
+  // ── Tabs & Panels ──────────────────────────────────────────────
+  "tab_bar": { "show": true },
+  "tabs": {
+    "git_status": true,
+    "close_position": "right",
+    "activate_on_close": "history"
+  },
+  "preview_tabs": {
+    "enabled": true,
+    "enable_preview_from_file_finder": true,
+    "enable_preview_file_from_code_navigation": true,
+    "enable_preview_multibuffer_from_code_navigation": true
+  },
+  "project_panel": {
+    "dock": "left",
+    "default_width": 280,
+    "git_status": true,
+    "indent_size": 16
+  },
+  "outline_panel": { "dock": "left" },
+  "collaboration_panel": { "dock": "left" },
+  "git_panel": { "tree_view": true,
+                 "file_icons": true,
+                 "dock": "left" },
+  "agent": {
+    "tool_permissions": {
+      "tools": {
+        "terminal": {
+          "default": "allow"
+        }
+      }
+    },
+    "single_file_review": false,
+    "dock": "right",
+    "default_model": {
+      "effort": "xhigh",
+      "enable_thinking": true,
+      "provider": "openai-subscribed",
+      "model": "gpt-5.5"
+    },
+    "model_parameters": []
+  },
+  "terminal": {
+    "dock": "bottom",
+    "default_height": 320,
+    "working_directory": "current_project_directory",
+    "shell": { "program": "zsh" }
+  },
+
+  // ── Git ────────────────────────────────────────────────────────
+  "git": {
+    "git_gutter": "tracked_files",
+    "inline_blame": { "enabled": true, "delay_ms": 600 }
+  },
+
+  // ── Completions / Hints / Predictions ──────────────────────────
+  "show_completions_on_input": true,
+  "use_on_type_format": false,
+  "edit_predictions": {
+    "mode": "subtle",
+    "disabled_globs": ["**/.env*", "**/secrets/**"]
+  },
+  "inlay_hints": {
+    "enabled": true,
+    "show_type_hints": true,
+    "show_parameter_hints": true,
+    "show_other_hints": true
+  },
+
+  // ── Languages ──────────────────────────────────────────────────
+  "languages": {
+    "TypeScript": {
+      "tab_size": 2,
+      "formatter": "prettier",
+      "code_actions_on_format": {
+        "source.organizeImports": true,
+        "source.removeUnused": true
+      },
+      "language_servers": ["vtsls", "!typescript-language-server", "..."]
+    },
+    "JavaScript": {
+      "tab_size": 2,
+      "formatter": "prettier",
+      "language_servers": ["vtsls", "!typescript-language-server", "..."]
+    },
+    "TSX": {
+      "tab_size": 2,
+      "formatter": "prettier",
+      "language_servers": ["vtsls", "!typescript-language-server", "..."]
+    },
+    "JSON": { "tab_size": 2, "formatter": "prettier" },
+    "JSONC": { "tab_size": 2, "formatter": "prettier" },
+    "YAML": { "tab_size": 2 },
+    "Go": { "tab_size": 4, "hard_tabs": true },
+    "Python": { "tab_size": 4, "formatter": "language_server" },
+    "Markdown": { "soft_wrap": "editor_width", "format_on_save": "off" },
+    "Shell Script": { "tab_size": 2 }
+  },
+
+  // ── LSP ────────────────────────────────────────────────────────
+  "lsp": {
+    "vtsls": {
+      "settings": {
+        "typescript": {
+          "tsserver": { "maxTsServerMemory": 4096 },
+          "preferences": { "includePackageJsonAutoImports": "on" }
+        },
+        "javascript": { "tsserver": { "maxTsServerMemory": 4096 } }
+      }
+    },
+    "oxlint": {
+      "initialization_options": {
+        "settings": {
+          "run": "onType",
+          "configPath": null,
+          "fixKind": "safe_fix",
+          "unusedDisableDirectives": "allow"
+        }
+      }
+    }
+  },
+
+  // ── Files & Search ─────────────────────────────────────────────
+  "file_scan_exclusions": [
+    "**/.git",
+    "**/.svn",
+    "**/.hg",
+    "**/.DS_Store",
+    "**/node_modules",
+    "**/target",
+    "**/dist",
+    "**/build",
+    "**/.next",
+    "**/.turbo",
+    "**/.cache",
+    "**/coverage",
+    "**/.pytest_cache",
+    "**/__pycache__"
+  ],
+  "search": {
+    "whole_word": false,
+    "case_sensitive": false,
+    "include_ignored": false
+  }
+}

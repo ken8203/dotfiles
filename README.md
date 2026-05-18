@@ -40,6 +40,7 @@ stow --restow zsh
 ├── ghostty/.config/ghostty/config
 ├── starship/.config/starship.toml
 ├── revdiff/.config/revdiff/config
+├── zed/.config/zed/{settings,keymap}.json
 └── vim/.vimrc, .vim/
 ```
 
@@ -47,7 +48,7 @@ stow --restow zsh
 
 - Terminal: [Ghostty](https://ghostty.org/)
 - Shell: zsh
-- Editor: vim
+- Editor: vim, [Zed](https://zed.dev/)
 - Prompt: [Starship](https://starship.rs/)
 - Theme: [Nord](https://www.nordtheme.com/)
 - Plugins: zsh-autosuggestions, zsh-syntax-highlighting
