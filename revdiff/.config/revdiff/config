@@ -7,3 +7,4 @@ word-diff = true
 wrap = true
 vim-motion = true
 cross-file-hunks = true
+compact = true
