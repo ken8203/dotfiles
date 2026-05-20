@@ -3,6 +3,7 @@ brew "stow"
 
 # Shell
 brew "starship"
+brew "tmux"
 brew "zsh-autosuggestions"
 brew "zsh-syntax-highlighting"
 
