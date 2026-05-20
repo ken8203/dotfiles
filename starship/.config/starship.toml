@@ -9,6 +9,10 @@ disabled = true
 [nodejs]
 disabled = true
 
+# Disable golang (go version occasionally exceeds command_timeout)
+[golang]
+disabled = true
+
 # Kubernetes
 [kubernetes]
 disabled = false
