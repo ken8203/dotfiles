@@ -12,6 +12,7 @@ brew "eza"
 brew "bat"
 brew "ripgrep"
 brew "ast-grep"
+brew "agent-browser"
 
 # Diff review
 tap "umputun/apps"
