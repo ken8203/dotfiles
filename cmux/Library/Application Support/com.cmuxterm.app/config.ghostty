@@ -1,0 +1,5 @@
+# cmux uses Ghostty under the hood and reads this file as a Ghostty config.
+# Instead of duplicating settings, just include the standalone Ghostty config
+# (managed by the `ghostty` stow package) so font/theme/etc. stay in one place.
+# `?` makes it optional so cmux still starts if that config isn't present.
+config-file = ?~/.config/ghostty/config

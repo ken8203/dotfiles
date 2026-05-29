@@ -39,6 +39,7 @@ dotfiles/
 ├── git/.gitconfig, .gitignore
 ├── tmux/.tmux.conf
 ├── ghostty/.config/ghostty/config
+├── cmux/Library/Application Support/com.cmuxterm.app/config.ghostty  # includes the ghostty config above
 ├── starship/.config/starship.toml
 ├── revdiff/.config/revdiff/config
 ├── zed/.config/zed/{settings,keymap}.json
