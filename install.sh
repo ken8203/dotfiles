@@ -1,6 +1,10 @@
 #!/bin/sh
 set -e
 
+# Resolve the directory this script lives in, so it works regardless of where
+# the dotfiles repo is checked out.
+DOTFILES_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 echo "Installing dotfiles..."
 
 # Install Homebrew if not exists
@@ -11,12 +15,12 @@ fi
 
 # Install dependencies
 echo "Installing dependencies..."
-brew bundle --file=~/dotfiles/Brewfile
+brew bundle --file="$DOTFILES_DIR/Brewfile"
 
 # Create symlinks
 echo "Creating symlinks..."
-cd ~/dotfiles
-stow zsh git tmux ghostty starship vim bat revdiff zed hunk
+cd "$DOTFILES_DIR"
+stow --target="$HOME" zsh git tmux ghostty starship vim bat revdiff zed hunk
 
 # Install git hooks
 echo "Installing git hooks..."

@@ -5,32 +5,33 @@ Managed with [GNU Stow](https://www.gnu.org/software/stow/).
 ## Install
 
 ```bash
-git clone https://github.com/ken8203/dotfiles.git ~/dotfiles
-cd ~/dotfiles && ./install.sh
+# Clone anywhere; install.sh resolves its own location and stows into $HOME.
+git clone https://github.com/ken8203/dotfiles.git
+cd dotfiles && ./install.sh
 ```
 
 ## Usage
 
 ```bash
-cd ~/dotfiles
+# Run from the repo directory (wherever you cloned it).
 
 # Link all packages
 ./install.sh
 
 # Link single package
-stow zsh
+stow --target="$HOME" zsh
 
 # Unlink package
-stow -D zsh
+stow --target="$HOME" -D zsh
 
 # Re-link package
-stow --restow zsh
+stow --target="$HOME" --restow zsh
 ```
 
 ## Structure
 
 ```
-~/dotfiles/
+dotfiles/
 ├── zsh/
 │   ├── .zshrc
 │   ├── .aliases
