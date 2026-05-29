@@ -8,6 +8,7 @@ brew "zsh-autosuggestions"
 brew "zsh-syntax-highlighting"
 
 # CLI tools
+brew "gh"
 brew "eza"
 brew "bat"
 brew "ripgrep"
@@ -29,6 +30,9 @@ brew "worktrunk"
 # Runtime management
 brew "fnm"
 brew "pnpm"
+
+# Cloud
+cask "gcloud-cli"
 
 # Observability
 tap "getsentry/tools"
