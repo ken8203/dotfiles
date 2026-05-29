@@ -29,7 +29,7 @@ prek install
 # Install Claude skills (managed by vercel-labs/skills)
 echo "Installing skills..."
 npx -y skills@latest add -g obra/superpowers \
-  --skill brainstorming,writing-plans,executing-plans,subagent-driven-development,systematic-debugging,using-superpowers \
+  --skill brainstorming writing-plans \
   --agent '*' -y
 npx -y skills@latest add -g upstash/context7 --skill find-docs --agent '*' -y
 npx -y skills@latest add -g vercel-labs/agent-browser --agent '*' -y
