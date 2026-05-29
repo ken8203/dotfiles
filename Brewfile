@@ -23,6 +23,9 @@ brew "modem-dev/tap/hunk"
 # Git hooks
 brew "prek"
 
+# Git worktree management
+brew "worktrunk"
+
 # Runtime management
 brew "fnm"
 brew "pnpm"
