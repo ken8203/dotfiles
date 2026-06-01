@@ -34,6 +34,7 @@ brew "pnpm"
 # Cloud
 cask "gcloud-cli"
 brew "kubectx"
+brew "cloudflared"
 
 # Observability
 tap "getsentry/tools"
