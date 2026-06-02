@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // \"\"' | { read -r f; case \"$f\" in *.local) printf '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Blocked: *.local files are gitignored local secret/overrides. Edit them manually outside Claude.\"}}\\n';; esac; }",
+            "statusMessage": "Checking for protected .local files"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // .tool_response.filePath // \"\"' | { read -r f; case \"$f\" in */install.sh|install.sh) command -v shellcheck >/dev/null 2>&1 || exit 0; out=$(shellcheck \"$f\" 2>&1) && exit 0; printf '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":%s}}\\n' \"$(printf %s \"$out\" | jq -Rs .)\";; esac; }",
+            "statusMessage": "Linting install.sh with shellcheck"
+          }
+        ]
+      }
+    ]
+  }
+}

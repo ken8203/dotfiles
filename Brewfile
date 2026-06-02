@@ -14,6 +14,8 @@ brew "bat"
 brew "ripgrep"
 brew "ast-grep"
 brew "agent-browser"
+brew "circleci"
+brew "shellcheck"
 
 # Diff review
 tap "umputun/apps"
