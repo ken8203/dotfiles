@@ -1,6 +1,10 @@
 # Dotfiles management
 brew "stow"
 
+# Terminal
+cask "ghostty"
+brew "herdr"
+
 # Shell
 brew "starship"
 brew "tmux"

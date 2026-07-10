@@ -1,0 +1,24 @@
+# Herdr configuration (https://herdr.dev)
+# Full defaults: `herdr --default-config`. Apply changes: `herdr server reload-config`.
+
+[theme]
+name = "nord"
+
+[ui]
+# Show detected agent (claude/codex) on split pane borders.
+show_agent_labels_on_pane_borders = true
+hide_tab_bar_when_single_tab = true
+
+[ui.toast]
+# macOS system notification when an agent finishes or waits for input.
+delivery = "system"
+delay_seconds = 2
+
+[experimental]
+# Ghostty supports the kitty graphics protocol.
+kitty_graphics = true
+# Keep the IME candidate window anchored to the cursor when typing CJK.
+reveal_hidden_cursor_for_cjk_ime = true
+# Switch to ASCII input while in prefix mode so keybindings aren't swallowed
+# by the CJK input source (macOS only).
+switch_ascii_input_source_in_prefix = true
