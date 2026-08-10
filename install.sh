@@ -20,7 +20,7 @@ brew bundle --file="$DOTFILES_DIR/Brewfile"
 # Create symlinks
 echo "Creating symlinks..."
 cd "$DOTFILES_DIR"
-stow --target="$HOME" zsh git tmux ghostty starship vim bat revdiff zed hunk herdr claude
+stow --target="$HOME" zsh git tmux ghostty starship vim bat revdiff zed hunk herdr agents
 
 # Install git hooks
 echo "Installing git hooks..."
