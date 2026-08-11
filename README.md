@@ -43,6 +43,7 @@ dotfiles/
 ├── starship/.config/starship.toml
 ├── revdiff/.config/revdiff/config
 ├── zed/.config/zed/{settings,keymap}.json
+├── tty7/.config/tty7/{config.json,themes/}
 └── vim/.vimrc, .vim/
 ```
 
