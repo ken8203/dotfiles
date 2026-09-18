@@ -42,12 +42,18 @@ mkdir -p "$HOME/.claude/skills"
 for dir in "$HOME"/.agents/skills/*/; do
   name="$(basename "$dir")"
   jq -e --arg n "$name" '.skills | has($n)' "$LOCK" >/dev/null && continue
-  ln -shf "../../.agents/skills/$name" "$HOME/.claude/skills/$name"
+  # Replace our own link, but leave a real directory alone: an agent's own
+  # installer may own that path. `ln -shf` spells this differently on GNU, so
+  # clear the link by hand instead.
+  dest="$HOME/.claude/skills/$name"
+  [ -L "$dest" ] && rm -f "$dest"
+  [ -e "$dest" ] || ln -s "../../.agents/skills/$name" "$dest"
 done
 
 for skill in "${MODEL_INVOCABLE[@]}"; do
   f="$HOME/.agents/skills/$skill/SKILL.md"
   if [ -f "$f" ]; then
-    sed -i '' '/^disable-model-invocation: true$/d' "$f"
+    # -i'' is BSD-only; the backup dance is what both seds agree on.
+    sed -i.bak '/^disable-model-invocation: true$/d' "$f" && rm -f "$f.bak"
   fi
 done
