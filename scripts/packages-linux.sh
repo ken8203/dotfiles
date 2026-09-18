@@ -14,6 +14,11 @@ BIN_DIR="$HOME/.local/bin"
 mkdir -p "$BIN_DIR"
 FAILED=()
 
+# Where this script installs to. The shell running it predates those tools, so
+# without this every re-run reinstalls them — and some upstream installers treat
+# an existing install as an error.
+PATH="$BIN_DIR:$HOME/.cargo/bin:$PATH"
+
 case "$(uname -m)" in
   x86_64|amd64)  ARCH_GNU=x86_64;  ARCH_GO=amd64; ARCH_NODE=x64   ;;
   aarch64|arm64) ARCH_GNU=aarch64; ARCH_GO=arm64; ARCH_NODE=arm64 ;;
