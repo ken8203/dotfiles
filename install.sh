@@ -26,13 +26,8 @@ stow --target="$HOME" zsh git tmux ghostty starship vim bat revdiff zed hunk her
 echo "Installing git hooks..."
 prek install
 
-# Install Claude skills (managed by vercel-labs/skills)
+# Install global skills (managed by skills.sh) from the stowed lock file
 echo "Installing skills..."
-npx -y skills@latest add -g obra/superpowers \
-  --skill brainstorming writing-plans \
-  --agent '*' -y
-npx -y skills@latest add -g upstash/context7 --skill find-docs --agent '*' -y
-npx -y skills@latest add -g vercel-labs/agent-browser --agent '*' -y
-npx -y skills@latest add -g https://cli.sentry.dev --agent '*' -y
+"$DOTFILES_DIR/scripts/skills-restore.sh"
 
 echo "Done! Restart your terminal."

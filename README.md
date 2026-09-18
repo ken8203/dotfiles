@@ -39,13 +39,40 @@ dotfiles/
 ├── git/.gitconfig, .gitignore
 ├── tmux/.tmux.conf
 ├── ghostty/.config/ghostty/config
-├── cmux/Library/Application Support/com.cmuxterm.app/config.ghostty  # includes the ghostty config above
 ├── starship/.config/starship.toml
+├── bat/.config/bat/config
+├── herdr/.config/herdr/config.toml
+├── hunk/.config/hunk/config.toml
 ├── revdiff/.config/revdiff/config
 ├── zed/.config/zed/{settings,keymap}.json
 ├── tty7/.config/tty7/{config.json,themes/}
+├── agents/{.claude/CLAUDE.md, .codex/AGENTS.md, .agents/}
 └── vim/.vimrc, .vim/
 ```
+
+## Skills
+
+Global agent skills are installed by [skills.sh](https://www.skills.sh/) into
+`~/.agents/skills/`, which it symlinks into each agent's own directory
+(`~/.claude/skills/` and friends). The manifest it keeps there,
+`~/.agents/.skill-lock.json`, is stowed from the `agents` package so it travels
+with this repo.
+
+The CLI's `experimental_install` only restores a project-level `skills-lock.json`,
+so `scripts/skills-restore.sh` replays the global lock through `skills add -g`
+instead. `install.sh` runs it; run it directly after editing the lock by hand:
+
+```bash
+./scripts/skills-restore.sh
+```
+
+It also strips `disable-model-invocation: true` from the handful of skills that
+should stay model-invocable — see the list at the top of the script.
+
+`simplify-review` and `hindsight-coding-agent` are not managed by the CLI and are
+committed as plain files under `agents/.agents/skills/`. The CLI only links its own
+installs into the agent directories, so the script symlinks anything in
+`~/.agents/skills/` that the lock does not know about into `~/.claude/skills/`.
 
 ## Stack
 

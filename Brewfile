@@ -22,6 +22,7 @@ brew "agent-browser"
 brew "circleci"
 brew "shellcheck"
 brew "yq"
+brew "jq"
 
 # Diff review
 tap "umputun/apps"
