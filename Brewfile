@@ -27,8 +27,6 @@ brew "jq"
 # Diff review
 tap "umputun/apps"
 brew "umputun/apps/revdiff"
-tap "modem-dev/tap"
-brew "modem-dev/tap/hunk"
 
 # Git hooks
 brew "prek"

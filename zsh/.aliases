@@ -32,7 +32,6 @@ alias gal="gcloud auth login --update-adc"
 alias pn="pnpm"
 alias rd="revdiff"
 [[ -x /opt/homebrew/bin/zed ]] && alias authzed="/opt/homebrew/bin/zed"
-[[ -x /usr/local/bin/zed ]] && alias zed="/usr/local/bin/zed"
 
 # Outpost
 # Bring up herdr on an Outpost instance for `herdr --machine`. A fresh instance

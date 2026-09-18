@@ -162,10 +162,6 @@ need herdr fetch_bin herdr \
 need agent-browser fetch_bin agent-browser \
   "https://github.com/vercel-labs/agent-browser/releases/latest/download/agent-browser-linux-$ARCH_NODE"
 
-need hunk fetch_tar hunk \
-  "https://github.com/modem-dev/hunk/releases/latest/download/hunkdiff-linux-$ARCH_NODE.tar.gz" \
-  "hunkdiff-linux-$ARCH_NODE/hunk"
-
 need kubectx fetch_bin kubectx \
   "https://github.com/ahmetb/kubectx/releases/latest/download/kubectx"
 need kubens fetch_bin kubens \

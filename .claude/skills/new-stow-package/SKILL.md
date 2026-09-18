@@ -27,13 +27,13 @@ forgetting the second is the common failure mode:
 
 3. **Wire it into `install.sh`.** Append the package name to the `PACKAGES` variable:
    ```sh
-   PACKAGES="zsh git tmux starship vim bat revdiff hunk herdr agents"
+   PACKAGES="zsh git tmux starship vim bat revdiff herdr agents"
    ```
    Keep the list on one line, space-separated. **This step is mandatory** — without it
    `./install.sh` will never stow the new package.
 
    If the package configures a GUI app that only runs on the Mac, add it to the
-   `Darwin` branch below instead (`PACKAGES="$PACKAGES ghostty zed tty7"`), since
+   `Darwin` branch below instead (`PACKAGES="$PACKAGES ghostty"`), since
    Linux is installed as a headless box.
 
 4. **Update `README.md`** if it has a Structure tree, adding the new package for documentation parity (optional but preferred).

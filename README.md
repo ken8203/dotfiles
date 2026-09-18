@@ -35,9 +35,9 @@ stow --target="$HOME" --restow zsh
 | | macOS | Linux |
 |---|---|---|
 | Packages | `Brewfile` via `scripts/packages-macos.sh` | `scripts/packages-linux.sh` (apt + vendor repos + upstream releases) |
-| Stow packages | all | all but `ghostty`, `zed`, `tty7` |
+| Stow packages | all | all but `ghostty` |
 
-Linux is assumed to be a headless dev box, so the GUI packages, the fonts and
+Linux is assumed to be a headless dev box, so the GUI package, the fonts and
 `cloudflared` are skipped. `Brewfile` stays macOS-only — the Linux list lives in
 `scripts/packages-linux.sh` because it has no single source: apt covers the
 basics, `gh`/`eza`/`gcloud` ship vendor apt repos, and the rest only publish
@@ -66,10 +66,7 @@ dotfiles/
 ├── starship/.config/starship.toml
 ├── bat/.config/bat/config
 ├── herdr/.config/herdr/config.toml
-├── hunk/.config/hunk/config.toml
 ├── revdiff/.config/revdiff/config
-├── zed/.config/zed/{settings,keymap}.json
-├── tty7/.config/tty7/{config.json,themes/}
 ├── agents/{.claude/CLAUDE.md, .codex/AGENTS.md, .agents/}
 ├── vim/.vimrc, .vim/
 └── scripts/packages-{macos,linux}.sh, skills-restore.sh
@@ -112,7 +109,7 @@ npx @vectorize-io/hindsight-coding-agents install codex --server self-hosted --a
 
 - Terminal: [Ghostty](https://ghostty.org/)
 - Shell: zsh
-- Editor: vim, [Zed](https://zed.dev/)
+- Editor: vim
 - Prompt: [Starship](https://starship.rs/)
 - Theme: [Nord](https://www.nordtheme.com/)
 - Plugins: zsh-autosuggestions, zsh-syntax-highlighting
