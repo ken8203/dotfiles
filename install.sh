@@ -4,27 +4,40 @@ set -e
 # Resolve the directory this script lives in, so it works regardless of where
 # the dotfiles repo is checked out.
 DOTFILES_DIR="$(cd "$(dirname "$0")" && pwd)"
+OS="$(uname -s)"
 
-echo "Installing dotfiles..."
+echo "Installing dotfiles for $OS..."
 
-# Install Homebrew if not exists
-if ! command -v brew &> /dev/null; then
-  echo "Installing Homebrew..."
-  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-fi
+# GUI packages are macOS-only; Linux is treated as a headless dev box.
+PACKAGES="zsh git tmux starship vim bat revdiff hunk herdr agents"
 
-# Install dependencies
-echo "Installing dependencies..."
-brew bundle --file="$DOTFILES_DIR/Brewfile"
+case "$OS" in
+  Darwin)
+    PACKAGES="$PACKAGES ghostty zed tty7"
+    "$DOTFILES_DIR/scripts/packages-macos.sh"
+    ;;
+  Linux)
+    "$DOTFILES_DIR/scripts/packages-linux.sh"
+    ;;
+  *)
+    echo "Unsupported OS: $OS" >&2
+    exit 1
+    ;;
+esac
 
 # Create symlinks
 echo "Creating symlinks..."
 cd "$DOTFILES_DIR"
-stow --target="$HOME" zsh git tmux ghostty starship vim bat revdiff zed hunk herdr agents tty7
+# shellcheck disable=SC2086 # $PACKAGES is a deliberate argument list
+stow --target="$HOME" $PACKAGES
 
 # Install git hooks
-echo "Installing git hooks..."
-prek install
+if command -v prek >/dev/null 2>&1; then
+  echo "Installing git hooks..."
+  prek install
+else
+  echo "Skipping git hooks: prek is not installed." >&2
+fi
 
 # Install global skills (managed by skills.sh) from the stowed lock file
 echo "Installing skills..."
