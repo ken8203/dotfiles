@@ -4,3 +4,6 @@
 zed/.config/zed/prompts/
 revdiff/.config/revdiff/themes/
 revdiff/.claude/plugins/data/*/state/
+
+# Agent-created git worktrees
+.claude/worktrees/
