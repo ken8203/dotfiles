@@ -29,6 +29,36 @@ alias authzed="/opt/homebrew/bin/zed"
 alias zed="/usr/local/bin/zed"
 alias rd="revdiff"
 
+# Outpost
+# Bring up herdr on an Outpost instance for `herdr --machine`. A fresh instance
+# ships an older herdr in /usr/bin and nothing restarts the server after
+# stop/start or release/claim, where herdr's background reconnect only ever
+# discovers a server. Installs into ~/.local/bin, which lives on the data disk
+# and wins over /usr/bin.
+outpost-herdr() {
+  emulate -L zsh
+  local host="${1:-outpost}"
+  local version arch
+  version=$(herdr --version | awk '{ print $2 }') || return 1
+
+  if [[ $(ssh "$host" '~/.local/bin/herdr --version 2>/dev/null') != "herdr $version" ]]; then
+    case $(ssh "$host" uname -m) in
+      x86_64|amd64)  arch=x86_64 ;;
+      aarch64|arm64) arch=aarch64 ;;
+      *) echo "Unsupported remote architecture" >&2; return 1 ;;
+    esac
+    echo "→ installing herdr $version on $host"
+    curl -fsSL --retry 3 "https://github.com/herdrdev/herdr/releases/download/v$version/herdr-linux-$arch" \
+      | ssh "$host" 'mkdir -p ~/.local/bin && cat > ~/.local/bin/herdr.tmp && chmod 755 ~/.local/bin/herdr.tmp && mv -f ~/.local/bin/herdr.tmp ~/.local/bin/herdr' \
+      || return 1
+    ssh "$host" '~/.local/bin/herdr server stop' >/dev/null 2>&1
+  fi
+
+  ssh "$host" '~/.local/bin/herdr status server 2>/dev/null | grep -q "^status: running$" \
+    || { setsid nohup ~/.local/bin/herdr server >/dev/null 2>&1 </dev/null & sleep 2; }
+    ~/.local/bin/herdr status server'
+}
+
 # Git
 # Remove worktrees and branches whose upstream was deleted on the remote
 # (covers squash/rebase merges, unlike `git branch --merged`).
