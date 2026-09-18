@@ -87,23 +87,42 @@ have batcat && ln -sfn "$(command -v batcat)" "$BIN_DIR/bat"
 have fdfind && ln -sfn "$(command -v fdfind)" "$BIN_DIR/fd"
 
 # --- vendor apt repos --------------------------------------------------------
-try "github-cli repo" apt_repo github-cli \
-  https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/github-cli.gpg] https://cli.github.com/packages stable main"
-
-try "eza repo" apt_repo gierens \
-  https://raw.githubusercontent.com/eza-community/eza/main/deb.asc \
-  "deb [signed-by=/etc/apt/keyrings/gierens.gpg] http://deb.gierens.de stable main"
-
-try "google-cloud repo" apt_repo google-cloud \
-  https://packages.cloud.google.com/apt/doc/apt-key.gpg \
-  "deb [signed-by=/etc/apt/keyrings/google-cloud.gpg] https://packages.cloud.google.com/apt cloud-sdk main"
-
 PKGS=()
-have gh     || PKGS+=(gh)
-have eza    || PKGS+=(eza)
+
+# Register a vendor repo and queue its packages. Skipped when the tool is already
+# installed, and the repo is left alone when some other source already serves that
+# URI: a second entry for it with a different Signed-By makes apt refuse to read
+# the whole source list, taking every other apt step down with it.
+vendor() {
+  local cmd=$1 name=$2 key_url=$3 uri=$4 line=$5; shift 5
+  have "$cmd" && return 0
+  if grep -rqsF "$uri" /etc/apt/sources.list /etc/apt/sources.list.d/; then
+    printf '\n==> %s repo already configured\n' "$name"
+  else
+    try "$name repo" apt_repo "$name" "$key_url" "$line" || return 1
+  fi
+  PKGS+=("$@")
+}
+
+vendor gh github-cli \
+  https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+  https://cli.github.com/packages \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/github-cli.gpg] https://cli.github.com/packages stable main" \
+  gh
+
+vendor eza gierens \
+  https://raw.githubusercontent.com/eza-community/eza/main/deb.asc \
+  http://deb.gierens.de \
+  "deb [signed-by=/etc/apt/keyrings/gierens.gpg] http://deb.gierens.de stable main" \
+  eza
+
 # kubectl ships from the same repo, so gcloud and kubectl arrive together.
-have gcloud || PKGS+=(google-cloud-cli google-cloud-cli-gke-gcloud-auth-plugin kubectl)
+vendor gcloud google-cloud \
+  https://packages.cloud.google.com/apt/doc/apt-key.gpg \
+  https://packages.cloud.google.com/apt \
+  "deb [signed-by=/etc/apt/keyrings/google-cloud.gpg] https://packages.cloud.google.com/apt cloud-sdk main" \
+  google-cloud-cli google-cloud-cli-gke-gcloud-auth-plugin kubectl
+
 [ ${#PKGS[@]} -gt 0 ] && try "${PKGS[*]}" apt_install "${PKGS[@]}"
 
 # --- upstream installers -----------------------------------------------------
