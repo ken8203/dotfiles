@@ -28,6 +28,30 @@ stow --target="$HOME" -D zsh
 stow --target="$HOME" --restow zsh
 ```
 
+## Platforms
+
+`install.sh` branches on `uname -s`:
+
+| | macOS | Linux |
+|---|---|---|
+| Packages | `Brewfile` via `scripts/packages-macos.sh` | `scripts/packages-linux.sh` (apt + vendor repos + upstream releases) |
+| Stow packages | all | all but `ghostty`, `zed`, `tty7` |
+
+Linux is assumed to be a headless dev box, so the GUI packages, the fonts and
+`cloudflared` are skipped. `Brewfile` stays macOS-only — the Linux list lives in
+`scripts/packages-linux.sh` because it has no single source: apt covers the
+basics, `gh`/`eza`/`gcloud` ship vendor apt repos, and the rest only publish
+upstream installers or GitHub releases. Only the apt step is fatal there, since
+`stow` comes from it; past that each tool is reported at the end and installed
+by hand.
+
+The zsh config mostly doesn't ask which OS it is on — it asks whether the
+directory or the binary is there, so a path is only added when it exists and an
+alias only when its target does. `$OSTYPE` is left for the one thing that really
+is OS-dependent, `$PNPM_HOME`. Debian's renamed `batcat`/`fdfind` are fixed at
+the source instead: `packages-linux.sh` symlinks the canonical names into
+`~/.local/bin`, so scripts and tools see them too, not just interactive shells.
+
 ## Structure
 
 ```
@@ -47,7 +71,8 @@ dotfiles/
 ├── zed/.config/zed/{settings,keymap}.json
 ├── tty7/.config/tty7/{config.json,themes/}
 ├── agents/{.claude/CLAUDE.md, .codex/AGENTS.md, .agents/}
-└── vim/.vimrc, .vim/
+├── vim/.vimrc, .vim/
+└── scripts/packages-{macos,linux}.sh, skills-restore.sh
 ```
 
 ## Skills

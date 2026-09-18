@@ -38,3 +38,6 @@ Add a Homebrew dependency to `Brewfile` (repo root) in a consistent, idiomatic w
 ## Notes
 - One dependency per line; keep the existing `brew "x"` quoting style.
 - Avoid duplicates — grep the file for the token first.
+- `Brewfile` is macOS-only. If the tool should also be on the Ubuntu box, add it to
+  `scripts/packages-linux.sh` too — apt, a vendor apt repo, an upstream installer, or
+  a GitHub release, following the sections already in that file.
