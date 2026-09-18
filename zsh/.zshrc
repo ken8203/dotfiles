@@ -8,6 +8,7 @@ SAVEHIST=10000
 setopt SHARE_HISTORY
 
 # Completion
+fpath=("$HOME/.local/share/zsh/site-functions" $fpath)
 autoload -Uz compinit && compinit
 zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}'
 
@@ -36,4 +37,4 @@ eval "$(starship init zsh)"
 if command -v wt >/dev/null 2>&1; then eval "$(command wt config shell init zsh)"; fi
 
 # bun completions
-[ -s "/Users/jaychung/.bun/_bun" ] && source "/Users/jaychung/.bun/_bun"
+[ -s "$HOME/.bun/_bun" ] && source "$HOME/.bun/_bun"

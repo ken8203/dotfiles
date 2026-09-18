@@ -16,10 +16,12 @@ brew "gh"
 brew "eza"
 brew "bat"
 brew "ripgrep"
+brew "fd"
 brew "ast-grep"
 brew "agent-browser"
 brew "circleci"
 brew "shellcheck"
+brew "yq"
 
 # Diff review
 tap "umputun/apps"

@@ -1,6 +1,8 @@
 # Herdr configuration (https://herdr.dev)
 # Full defaults: `herdr --default-config`. Apply changes: `herdr server reload-config`.
 
+onboarding = false
+
 [theme]
 name = "nord"
 
@@ -8,10 +10,18 @@ name = "nord"
 # Show detected agent (claude/codex) on split pane borders.
 show_agent_labels_on_pane_borders = true
 hide_tab_bar_when_single_tab = true
+agent_panel_sort = "spaces"
+
+[keys]
+# Jump to the workspace/tab/pane of the most recent notification.
+open_notification_target = "prefix+o"
 
 [ui.toast]
-# macOS system notification when an agent finishes or waits for input.
-delivery = "system"
+# Notify via the outer terminal (Ghostty renders a native macOS
+# notification; clicking it focuses Ghostty). "system" without
+# terminal-notifier falls back to osascript, whose notifications are
+# unclickable and show up as Script Editor.
+delivery = "terminal"
 delay_seconds = 2
 
 [experimental]

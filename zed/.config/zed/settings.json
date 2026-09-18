@@ -2,8 +2,16 @@
   // ── Window / UI ────────────────────────────────────────────────
   "proxy": "",
   "cli_default_open_behavior": "existing_window",
-  "theme": "Ayu Mirage",
-  "icon_theme": "Catppuccin Mocha",
+  "theme": {
+    "mode": "dark",
+    "light": "One Light",
+    "dark": "One Dark"
+  },
+  "icon_theme": {
+    "mode": "dark",
+    "light": "Catppuccin Mocha",
+    "dark": "Catppuccin Mocha"
+  },
   "buffer_font_family": "JetBrains Mono",
   "buffer_font_size": 20,
   "ui_font_size": 20,

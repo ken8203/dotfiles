@@ -1,1 +1,6 @@
 *.local
+
+# App-managed state, regenerated on launch
+zed/.config/zed/prompts/
+revdiff/.config/revdiff/themes/
+revdiff/.claude/plugins/data/*/state/
