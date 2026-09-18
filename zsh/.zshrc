@@ -12,9 +12,12 @@ fpath=("$HOME/.local/share/zsh/site-functions" $fpath)
 autoload -Uz compinit && compinit
 zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}'
 
-# Plugins (via Homebrew)
-source /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh
-source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+# Plugins (Homebrew on macOS, apt on Linux)
+for _f in {/opt/homebrew/share,/usr/share}/zsh-autosuggestions/zsh-autosuggestions.zsh \
+          {/opt/homebrew/share,/usr/share}/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh; do
+  [[ -f $_f ]] && source $_f
+done
+unset _f
 
 # Report CWD via OSC 7 for terminal tab inheritance
 _osc7_chpwd() {
@@ -32,7 +35,7 @@ _osc7_chpwd
 [[ -f ~/.zshrc.local ]] && source ~/.zshrc.local
 
 # Starship prompt (must be at the end)
-eval "$(starship init zsh)"
+if command -v starship >/dev/null 2>&1; then eval "$(starship init zsh)"; fi
 
 if command -v wt >/dev/null 2>&1; then eval "$(command wt config shell init zsh)"; fi
 

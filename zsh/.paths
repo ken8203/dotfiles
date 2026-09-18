@@ -1,5 +1,5 @@
-# Homebrew
-export PATH="/opt/homebrew/bin:$PATH"
+# Homebrew (macOS only; Linux installs through apt)
+[[ -d /opt/homebrew/bin ]] && export PATH="/opt/homebrew/bin:$PATH"
 
 # Go
 export GOPATH="$HOME/go"
@@ -10,11 +10,20 @@ export GOPRIVATE="github.com/Dcard/*"
 export PATH="$HOME/.cargo/bin:$PATH"
 
 # Node (fnm)
-eval "$(fnm env --use-on-cd)"
+if command -v fnm >/dev/null 2>&1; then eval "$(fnm env --use-on-cd)"; fi
 
-# pnpm
-export PNPM_HOME="$HOME/Library/pnpm"
-export PATH="$PNPM_HOME/bin:$PATH"
+# pnpm — Homebrew's pnpm on macOS, the standalone build on Linux, which keeps
+# both the CLI and global bins directly in $PNPM_HOME.
+case "$OSTYPE" in
+  darwin*)
+    export PNPM_HOME="$HOME/Library/pnpm"
+    export PATH="$PNPM_HOME/bin:$PATH"
+    ;;
+  linux*)
+    export PNPM_HOME="$HOME/.local/share/pnpm"
+    export PATH="$PNPM_HOME:$PATH"
+    ;;
+esac
 
 export PATH="$HOME/.local/bin:$PATH"
 
@@ -22,8 +31,8 @@ export PATH="$HOME/.local/bin:$PATH"
 export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
 
-# Google Cloud SDK
-export PATH="/opt/homebrew/share/google-cloud-sdk/bin:$PATH"
+# Google Cloud SDK (the Homebrew cask; apt installs gcloud into /usr/bin)
+[[ -d /opt/homebrew/share/google-cloud-sdk/bin ]] && export PATH="/opt/homebrew/share/google-cloud-sdk/bin:$PATH"
 
 # Local overrides
 [[ -f ~/.paths.local ]] && source ~/.paths.local

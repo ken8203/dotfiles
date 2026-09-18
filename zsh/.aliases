@@ -1,8 +1,13 @@
 # System
-alias ls='eza'
-alias l='eza -lbF --git'
-alias ll='eza -lbGF --git'
-alias cat='bat'
+if command -v eza >/dev/null 2>&1; then
+  alias ls='eza'
+  alias l='eza -lbF --git'
+  alias ll='eza -lbGF --git'
+else
+  alias l='ls -lF'
+  alias ll='ls -laF'
+fi
+command -v bat >/dev/null 2>&1 && alias cat='bat'
 alias mkdir='mkdir -p'
 alias reload="source ~/.zshrc && exec $SHELL -l"
 
@@ -25,9 +30,9 @@ alias gal="gcloud auth login --update-adc"
 
 # Tools
 alias pn="pnpm"
-alias authzed="/opt/homebrew/bin/zed"
-alias zed="/usr/local/bin/zed"
 alias rd="revdiff"
+[[ -x /opt/homebrew/bin/zed ]] && alias authzed="/opt/homebrew/bin/zed"
+[[ -x /usr/local/bin/zed ]] && alias zed="/usr/local/bin/zed"
 
 # Outpost
 # Bring up herdr on an Outpost instance for `herdr --machine`. A fresh instance
