@@ -6,6 +6,11 @@ onboarding = false
 [theme]
 name = "nord"
 
+[terminal]
+# Panes inherit $SHELL from the server process, not the login shell, so a
+# server started before chsh keeps opening bash.
+default_shell = "zsh"
+
 [ui]
 # Show detected agent (claude/codex) on split pane borders.
 show_agent_labels_on_pane_borders = true
