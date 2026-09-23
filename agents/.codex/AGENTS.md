@@ -25,6 +25,11 @@
 - 開 subagent 執行實作類任務時用相對便宜的 model，貴的 model 留給 plan／review
 - PR description 要寫清楚 Motivation 與解決了什麼問題
 
+## Outpost 分工
+
+- 工作目錄在 `/home/outpost/` 底下（`$USER` 是 `outpost`）時你是 worker：收到的 brief 就是任務的全部範圍與授權，照它執行並交付
+- 其他情況你是 coordinator：research 與 implement 預設用 `outpost-delegate` skill 委派到 outpost；回答問題、幾行內的小改動、需要 local 資源（Chrome、local docker、GUI）的任務留在 local
+
 ## 程式風格
 
 - 避免過度工程：不要多餘的 wrapper、Base class、re-export、不必要的抽象層
