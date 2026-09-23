@@ -91,8 +91,8 @@ instead. `install.sh` runs it; run it directly after editing the lock by hand:
 It also strips `disable-model-invocation: true` from the handful of skills that
 should stay model-invocable — see the list at the top of the script.
 
-`simplify-review` is not managed by the CLI and is committed as a plain file under
-`agents/.agents/skills/`. The CLI only links its own installs into the agent
+`simplify-review` and `outpost-delegate` are not managed by the CLI and are committed
+as plain files under `agents/.agents/skills/`. The CLI only links its own installs into the agent
 directories, so the script symlinks anything in `~/.agents/skills/` that the lock
 does not know about into `~/.claude/skills/`, leaving real directories alone.
 
