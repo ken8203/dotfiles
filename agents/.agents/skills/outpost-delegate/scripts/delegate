@@ -1,0 +1,201 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC2016,SC2029  # remote scripts expand on outpost
+# The mechanical steps of outpost-delegate, one ssh connection per command.
+set -euo pipefail
+
+HOST=outpost
+ROOT=/home/outpost/code
+
+usage() {
+  cat >&2 <<'EOF'
+usage:
+  delegate start <task> --brief <dir> --kind claude|codex --model <m> --effort <e>
+                 [--repo <local-repo> [--clone <abs>] [--branch <b> [--base <rev>]]]
+  delegate wait <task> <timeout-ms>
+  delegate read <task>
+  delegate followup <task> <review-file>
+  delegate collect <task> <local-dir>
+  delegate clean <task>
+EOF
+  exit 2
+}
+
+die() {
+  echo "delegate: $*" >&2
+  exit 1
+}
+
+# Runs a bash script on outpost with positional args. The script names its
+# current step in $stage, reported if it fails, and calls herdr as $h.
+remote() {
+  local script='set -euo pipefail
+stage=init
+h=~/.local/bin/herdr
+trap '\''rc=$?; [ $rc -eq 0 ] || echo "delegate: failed at $stage" >&2'\'' EXIT
+'$1
+  shift
+  ssh "$HOST" "bash -c $(printf %q "$script") _ $(printf '%q ' "$@")"
+}
+
+cmd_start() {
+  local task=$1 brief='' kind='' model='' effort='' repo='' clone='' branch='' base=HEAD
+  shift
+  [[ $task =~ ^[a-z][a-z0-9_-]{0,31}$ ]] || die "task must match [a-z][a-z0-9_-]{0,31}"
+  while [ $# -ge 2 ]; do
+    case $1 in
+      --brief) brief=$2 ;;
+      --kind) kind=$2 ;;
+      --model) model=$2 ;;
+      --effort) effort=$2 ;;
+      --repo) repo=$2 ;;
+      --clone) clone=$2 ;;
+      --branch) branch=$2 ;;
+      --base) base=$2 ;;
+      *) usage ;;
+    esac
+    shift 2
+  done
+  [ $# -eq 0 ] && [ -n "$model" ] && [ -n "$effort" ] || usage
+  [ -z "$branch" ] || [ -n "$repo" ] || usage
+  [ -f "$brief/brief.md" ] || die "$brief/brief.md not found"
+
+  local args
+  case $kind in
+    claude) args=(--permission-mode auto --model "$model" --effort "$effort") ;;
+    codex) args=(--approve-for-me -m "$model" -c "model_reasoning_effort=$effort") ;;
+    *) usage ;;
+  esac
+
+  local base_sha=''
+  if [ -n "$repo" ]; then
+    repo=$(git -C "$repo" rev-parse --show-toplevel)
+    clone=${clone:-$ROOT/$(basename "$(git -C "$repo" remote get-url origin)" .git)}
+  fi
+  if [ -n "$branch" ]; then
+    base_sha=$(git -C "$repo" rev-parse --verify "$base^{commit}")
+    git -C "$repo" push -q --no-verify "$HOST:$clone" "$base_sha:refs/delegate/$task"
+  fi
+
+  local meta
+  meta=$(jq -nc --arg repo "$repo" --arg clone "$clone" --arg branch "$branch" --arg base "$base_sha" \
+    '{repo: $repo, clone: $clone, branch: $branch, base: $base}')
+
+  COPYFILE_DISABLE=1 tar --no-xattrs -C "$brief" -cf - . | remote '
+task=$1 clone=$2 branch=$3 kind=$4 meta=$5
+shift 5
+mb='"$ROOT"'/delegate/$task
+stage=check
+if [ -e "$mb" ]; then echo "mailbox $mb already exists" >&2; exit 1; fi
+if [ -n "$clone" ]; then
+  if [ ! -d "$clone/.git" ]; then echo "no main clone at $clone; set it up by hand" >&2; exit 1; fi
+  if [ "$kind" = claude ] &&
+    [ "$(jq --arg p "$clone" ".projects[\$p].hasTrustDialogAccepted" ~/.claude.json)" != true ]; then
+    echo "$clone is not trusted; run claude there once and accept" >&2
+    exit 1
+  fi
+  git -C "$clone" fetch -q origin
+fi
+
+stage=ship
+mkdir -p "$mb"
+tar -C "$mb" -xf -
+printf "%s\n" "$meta" >"$mb/.task.json"
+
+if [ -n "$branch" ]; then
+  stage="worktree create"
+  cwd=$clone.$task
+  out=$($h worktree create --cwd "$clone" --branch "$branch" --base "refs/delegate/$task" \
+    --path "$cwd" --label "$task" --no-focus)
+else
+  stage="workspace create"
+  cwd=${clone:-$mb}
+  out=$($h workspace create --cwd "$cwd" --label "$task" --no-focus)
+fi
+pane=$(jq -r ".result.root_pane.pane_id" <<<"$out")
+
+stage="agent start"
+# Startup hooks can hold a new agent briefly; a trust prompt holds it until the wait times out.
+$h agent start "$task" --kind "$kind" --pane "$pane" -- "$@" >/dev/null ||
+  $h agent wait "$task" --until idle --timeout 30000 >/dev/null
+
+stage="agent prompt"
+$h agent prompt "$task" "Read $mb/brief.md and follow it. Reply DONE when REPORT.md is written." \
+  --wait --until working --until blocked --timeout 30000 |
+  jq -c --arg pane "$pane" --arg cwd "$cwd" "{pane: \$pane, cwd: \$cwd, status: .result.agent.agent_status}"
+' "$task" "$clone" "$branch" "$kind" "$meta" "${args[@]}"
+}
+
+cmd_wait() {
+  [ $# -eq 2 ] || usage
+  remote 'stage="agent wait"; $h agent wait "$1" --timeout "$2" | jq -c "{status: .result.agent.agent_status}"' "$@"
+}
+
+cmd_read() {
+  [ $# -eq 1 ] || usage
+  remote 'stage="agent read"; $h agent read "$1" --source recent-unwrapped --lines 120' "$1"
+}
+
+cmd_followup() {
+  [ $# -eq 2 ] || usage
+  local name
+  name=$(basename "$2")
+  [[ $name =~ ^review-[0-9]+\.md$ ]] || die "review file must be named review-<n>.md"
+
+  remote '
+mb='"$ROOT"'/delegate/$1
+stage=ship
+test -d "$mb"
+cat >"$mb/$2"
+stage="agent prompt"
+$h agent prompt "$1" "Read $mb/$2 and address it. Update REPORT.md, then reply DONE." \
+  --wait --until working --until blocked --timeout 30000 |
+  jq -c "{status: .result.agent.agent_status}"
+' "$1" "$name" <"$2"
+}
+
+cmd_collect() {
+  [ $# -eq 2 ] || usage
+  local dir=$2
+  mkdir -p "$dir"
+  remote 'stage="fetch report"; cd '"$ROOT"'/delegate/"$1"; tar -cf - REPORT.md .task.json' "$1" |
+    tar -C "$dir" -xf -
+
+  local repo clone branch base
+  { read -r repo; read -r clone; read -r branch; read -r base; } \
+    < <(jq -r '.repo, .clone, .branch, .base' "$dir/.task.json")
+  if [ -n "$branch" ]; then
+    local ref=refs/remotes/$HOST/$branch
+    git -C "$repo" fetch -q "$HOST:$clone" "+refs/heads/$branch:$ref"
+    echo "branch: $ref (base $base)"
+    git -C "$repo" --no-pager log --oneline "$base..$ref"
+    git -C "$repo" --no-pager diff --stat "$base" "$ref"
+  fi
+  echo "report: $dir/REPORT.md"
+}
+
+cmd_clean() {
+  [ $# -eq 1 ] || usage
+  remote '
+meta='"$ROOT"'/delegate/$1/.task.json
+stage="workspace list"
+ws=$($h workspace list | jq -r --arg t "$1" ".result.workspaces[] | select(.label == \$t) | .workspace_id")
+if [ -z "$ws" ]; then echo "no workspace labeled $1" >&2; exit 1; fi
+if [ -n "$(jq -r .branch "$meta")" ]; then
+  stage="worktree remove"
+  $h worktree remove --workspace "$ws" >/dev/null
+  git -C "$(jq -r .clone "$meta")" update-ref -d "refs/delegate/$1"
+else
+  stage="workspace close"
+  $h workspace close "$ws" >/dev/null
+fi
+echo "cleaned $1 ($ws)"
+' "$1"
+}
+
+[ $# -ge 2 ] || usage
+cmd=$1
+shift
+case $cmd in
+  start | wait | read | followup | collect | clean) "cmd_$cmd" "$@" ;;
+  *) usage ;;
+esac
