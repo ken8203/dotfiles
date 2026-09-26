@@ -31,7 +31,7 @@ A failed stage can still have applied, so inspect remote state before rerunning 
 
 ## 1. Pick the worker
 
-Mirror the coordinator: the same harness, model, and effort as this session, unless the user named another.
+Mirror the coordinator's harness and model, at `medium` effort, unless the user named another. The coordinator keeps the higher effort for planning and review.
 
 ## 2. Write the brief
 
