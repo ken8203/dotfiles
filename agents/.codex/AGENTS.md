@@ -22,7 +22,6 @@
 - 測試只跑跟改動相關的範圍，不要跑 full suite
 - PR scope 之外的問題開 issue 記錄，不要順手修
 - Debug 先查證據（Sentry／PostHog／logs）找 root cause；結論要有數據支持，不要純推論
-- 開 subagent 執行實作類任務時用相對便宜的 model，貴的 model 留給 plan／review
 - PR description 要寫清楚 Motivation 與解決了什麼問題
 
 ## Outpost 分工
