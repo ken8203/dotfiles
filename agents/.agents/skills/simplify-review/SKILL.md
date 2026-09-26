@@ -7,7 +7,7 @@ description: Review the changed code for reuse, simplification, efficiency, and 
 
 You are improving the quality of the changed code, not hunting for bugs. Review
 it for reuse, simplification, efficiency, and altitude issues, then fix what you
-find. Do not look for correctness bugs — that is what `/code-review` is for.
+find.
 
 ## Phase 0 — Gather the diff
 
