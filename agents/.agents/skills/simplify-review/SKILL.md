@@ -11,11 +11,10 @@ find. Do not look for correctness bugs — that is what `/code-review` is for.
 
 ## Phase 0 — Gather the diff
 
-Run `git diff @{upstream}...HEAD` (or `git diff main...HEAD` / `git diff HEAD~1`
-if there's no upstream) to get the unified diff under review. If there are
-uncommitted changes, or the range diff is empty, also run `git diff HEAD` and
-include the working-tree changes in scope — the review often runs before the
-commit. If a PR number, branch name, or file path was passed as an argument,
+Review everything the branch changes since it forked from the default branch,
+uncommitted work included, since the review often runs before the commit:
+`git diff $(git merge-base HEAD origin/HEAD)` (use `main` if `origin/HEAD` is
+unset). If a PR number, branch name, or file path was passed as an argument,
 review that target instead. Treat this diff as the review scope.
 
 ## Phase 1 — Review (4 cleanup agents in parallel)
