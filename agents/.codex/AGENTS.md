@@ -22,6 +22,7 @@
 - 測試只跑跟改動相關的範圍，不要跑 full suite
 - PR scope 之外的問題開 issue 記錄，不要順手修
 - Debug 先查證據（Sentry／PostHog／logs）找 root cause；結論要有數據支持，不要純推論
+- 發 PR 前自行判斷要不要跑 `/simplify`（沒有才改用 `/simplify-review`）：有實質 code 改動就跑，純文件或瑣碎修改可略過
 - PR description 要寫清楚 Motivation 與解決了什麼問題
 
 ## Outpost 分工
