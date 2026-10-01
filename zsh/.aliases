@@ -63,6 +63,25 @@ outpost-herdr() {
     ~/.local/bin/herdr status server'
 }
 
+# Wake an Outpost instance and bring its herdr machine back online.
+# herdr's background connection can't open a browser for Cloudflare Access, so
+# an expired token leaves the machine at `! auth` until the login happens here.
+# Usage: outpost-up [name]
+outpost-up() {
+  emulate -L zsh
+  local name=$1 host=outpost${1:+-$1} app id
+  for app in outpost-api.dcard.io outpost-ssh.dcard.io; do
+    cloudflared access token --app "https://$app" >/dev/null 2>&1 \
+      || cloudflared access login --app "https://$app" >/dev/null || return 1
+  done
+  outpost status $name | grep -q '^Status *running$' || outpost start $name || return 1
+  outpost-herdr "$host" >/dev/null || return 1
+  id=$(herdr machine list | awk -v h="$host" '$3 == h { print $1 }')
+  [[ -n $id ]] || { echo "No herdr machine for $host" >&2; return 1; }
+  [[ $(herdr machine status "$id") == *$'\treachable' ]] || herdr machine reconnect "$id" || return 1
+  echo "$host ready"
+}
+
 # Git
 # Remove worktrees and branches whose upstream was deleted on the remote
 # (covers squash/rebase merges, unlike `git branch --merged`).
