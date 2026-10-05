@@ -69,16 +69,26 @@ outpost-herdr() {
 # Usage: outpost-up [name]
 outpost-up() {
   emulate -L zsh
-  local name=$1 host=outpost${1:+-$1} app id
+  local name=$1 host=outpost${1:+-$1} app id repaired=0
   for app in outpost-api.dcard.io outpost-ssh.dcard.io; do
-    cloudflared access token --app "https://$app" >/dev/null 2>&1 \
-      || cloudflared access login --app "https://$app" >/dev/null || return 1
+    cloudflared access token --app "https://$app" >/dev/null 2>&1 && continue
+    cloudflared access login --app "https://$app" >/dev/null || return 1
+    repaired=1
   done
-  outpost status $name | grep -q '^Status *running$' || outpost start $name || return 1
+  if ! outpost status $name | grep -q '^Status *running$'; then
+    outpost start $name || return 1
+    repaired=1
+  fi
   outpost-herdr "$host" >/dev/null || return 1
   id=$(herdr machine list | awk -v h="$host" '$3 == h { print $1 }')
   [[ -n $id ]] || { echo "No herdr machine for $host" >&2; return 1; }
   [[ $(herdr machine status "$id") == *$'\treachable' ]] || herdr machine reconnect "$id" || return 1
+  # Open clients back off up to 2 minutes while the machine is down; only a
+  # fresh profile retries at once. They poll the catalog every second, so the
+  # disabled state has to outlive one poll.
+  if (( repaired )); then
+    herdr machine disable "$id" >/dev/null && sleep 2 && herdr machine enable "$id" >/dev/null
+  fi
   echo "$host ready"
 }
 
