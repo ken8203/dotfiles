@@ -26,7 +26,11 @@ alias dcu="docker-compose up"
 alias dcd="docker-compose down"
 
 # gcloud
-alias gal="gcloud auth login --update-adc"
+if [[ $OSTYPE == linux* ]]; then
+  alias gal="gcloud auth login --update-adc --no-launch-browser"
+else
+  alias gal="gcloud auth login --update-adc"
+fi
 
 # Tools
 alias pn="pnpm"
