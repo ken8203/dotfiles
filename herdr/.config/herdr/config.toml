@@ -14,7 +14,9 @@ default_shell = "zsh"
 [ui]
 # Show detected agent (claude/codex) on split pane borders.
 show_agent_labels_on_pane_borders = true
-hide_tab_bar_when_single_tab = true
+# Keep false: with it on, panes in multi-tab workspaces keep the full height
+# and the tab bar pushes their last row off screen (herdrdev/herdr#4614).
+hide_tab_bar_when_single_tab = false
 agent_panel_sort = "spaces"
 
 [keys]
