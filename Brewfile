@@ -49,3 +49,4 @@ brew "getsentry/tools/sentry"
 
 # Fonts
 cask "font-geist-mono"
+cask "font-noto-sans-cjk-tc"
