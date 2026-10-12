@@ -48,4 +48,4 @@ tap "getsentry/tools"
 brew "getsentry/tools/sentry"
 
 # Fonts
-cask "font-paper-mono"
+cask "font-geist-mono"
