@@ -79,8 +79,10 @@ outpost-up() {
     cloudflared access login --app "https://$app" >/dev/null || return 1
     repaired=1
   done
+  # claim, not start: start fails once the instance has been released, and
+  # claim also resumes a stopped one.
   if ! outpost status $name | grep -q '^Status *running$'; then
-    outpost start $name || return 1
+    outpost claim $name || return 1
     repaired=1
   fi
   outpost-herdr "$host" >/dev/null || return 1
