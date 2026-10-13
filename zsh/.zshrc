@@ -1,3 +1,7 @@
+# Remote boxes may lack the local terminal's terminfo (e.g. xterm-ghostty),
+# which leaves zle unable to redraw and echoes every keystroke twice.
+infocmp "$TERM" >/dev/null 2>&1 || export TERM=xterm-256color
+
 # Claude Code
 export CLAUDE_CODE_NO_FLICKER=1
 
