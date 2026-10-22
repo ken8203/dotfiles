@@ -56,7 +56,7 @@ Failed at `check` with no main clone or an untrusted one: hand the one-time setu
 scripts/delegate wait <task> <timeout-ms>
 ```
 
-In Claude Code, run it with `run_in_background`, so the coordinator is woken on completion and stays free to delegate more. Done when the worker settles on `idle` or `done`. `blocked` means a question or approval UI: read it with `scripts/delegate read <task>` and bring it to the user to answer.
+In Claude Code, run it with `run_in_background`, so the coordinator is woken on completion and stays free to delegate more. It reconnects on its own when ssh drops. Done when the worker settles on `idle` or `done`. `blocked` means a question or approval UI: read it with `scripts/delegate read <task>` and bring it to the user to answer.
 
 ## 5. Collect and verify
 

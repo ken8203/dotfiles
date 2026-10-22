@@ -125,9 +125,21 @@ $h agent prompt "$task" "Read $mb/brief.md and follow it. Reply DONE when REPORT
 ' "$task" "$clone" "$branch" "$kind" "$meta" "${args[@]}"
 }
 
+# The cloudflared tunnel drops long ssh sessions (exit 255) while the worker
+# keeps running, so reconnect until the deadline.
 cmd_wait() {
   [ $# -eq 2 ] || usage
-  remote 'stage="agent wait"; $h agent wait "$1" --timeout "$2" | jq -c "{status: .result.agent.agent_status}"' "$@"
+  local left rc
+  while :; do
+    left=$(($2 - SECONDS * 1000))
+    [ "$left" -gt 0 ] || die "timed out waiting for $1"
+    rc=0
+    remote 'stage="agent wait"; $h agent wait "$1" --timeout "$2" | jq -c "{status: .result.agent.agent_status}"' \
+      "$1" "$left" || rc=$?
+    [ "$rc" -eq 255 ] || return "$rc"
+    echo "delegate: ssh dropped, reconnecting" >&2
+    sleep 5
+  done
 }
 
 cmd_read() {
