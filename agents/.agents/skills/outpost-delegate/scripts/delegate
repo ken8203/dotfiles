@@ -5,6 +5,7 @@ set -euo pipefail
 
 HOST=outpost
 ROOT=/home/outpost/code
+SELF=$(cd "$(dirname "$0")" && pwd)/$(basename "$0")
 
 usage() {
   cat >&2 <<'EOF'
@@ -12,6 +13,7 @@ usage:
   delegate start <task> --brief <dir> --kind claude|codex --model <m> --effort <e>
                  [--repo <local-repo> [--clone <abs>] [--branch <b> [--base <rev>]]]
   delegate wait <task> <timeout-ms>
+  delegate watch <task>
   delegate read <task>
   delegate followup <task> <review-file>
   delegate collect <task> <local-dir>
@@ -123,6 +125,61 @@ $h agent prompt "$task" "Read $mb/brief.md and follow it. Reply DONE when REPORT
   --wait --until working --until blocked --timeout 30000 |
   jq -c --arg pane "$pane" --arg cwd "$cwd" "{pane: \$pane, cwd: \$cwd, status: .result.agent.agent_status}"
 ' "$task" "$clone" "$branch" "$kind" "$meta" "${args[@]}"
+
+  [ -z "${REX_SESSION:-}" ] || cmd_watch "$task" || echo "delegate: watch failed; rerun delegate watch $task" >&2
+}
+
+# Rex can't run on outpost yet, so a tab in the coordinator's Rex session
+# mirrors the worker's herdr status into Rex.
+cmd_watch() {
+  [ $# -eq 1 ] || usage
+  [ -n "${REX_SESSION:-}" ] || die "watch needs a Rex terminal"
+  if rex window ls -s "$REX_SESSION" --json | jq -e --arg t "$1" 'any(.windows[]; .label == $t)' >/dev/null; then
+    echo "already watching $1"
+    return
+  fi
+  rex window new -s "$REX_SESSION" "$1" --focus=false -- "$SELF" monitor "$1" >/dev/null
+  echo "watching $1 in Rex tab $1"
+}
+
+# Runs inside the watch tab. Reports with OSC 7501 only on change, since
+# each report would bring back a done marker the user already dismissed.
+cmd_monitor() {
+  [ $# -eq 1 ] || usage
+  local task=$1 status shown='' state reported='' key
+  b64() { printf %s "$1" | base64 | tr -d '\n'; }
+  report() { printf '\e]7501;state=%s:app=outpost:title=%s:msg=%s\a' "$1" "$(b64 "$task")" "$(b64 "worker $2")"; }
+  echo "Watching $task on $HOST. Press a to attach; detach with ctrl+b q."
+  while :; do
+    status=$(remote '
+stage="agent get"
+if out=$($h agent get "$1"); then jq -r .result.agent.agent_status <<<"$out"; exit; fi
+stage="workspace list"
+$h workspace list | jq -r --arg t "$1" "if any(.result.workspaces[]; .label == \$t) then \"exited\" else \"cleaned\" end"
+' "$task" 2>/dev/null) || status=offline
+
+    case $status in
+      cleaned)
+        report clear "$status"
+        return
+        ;;
+      offline) state=$reported ;;
+      working | blocked) state=$status ;;
+      idle | done) state="done" ;;
+      exited) state=error ;;
+      *) state=idle ;;
+    esac
+    [ "$status" = "$shown" ] || echo "$(date +%T) $status"
+    shown=$status
+    if [ "$state" != "$reported" ]; then
+      report "$state" "$status"
+      reported=$state
+    fi
+
+    if read -rsn1 -t 15 key && [ "$key" = a ]; then
+      ssh -qt "$HOST" ".local/bin/herdr agent attach $(printf %q "$task")" || true
+    fi
+  done
 }
 
 # The cloudflared tunnel drops long ssh sessions (exit 255) while the worker
@@ -208,6 +265,6 @@ echo "cleaned $1 ($ws)"
 cmd=$1
 shift
 case $cmd in
-  start | wait | read | followup | collect | clean) "cmd_$cmd" "$@" ;;
+  start | wait | watch | monitor | read | followup | collect | clean) "cmd_$cmd" "$@" ;;
   *) usage ;;
 esac

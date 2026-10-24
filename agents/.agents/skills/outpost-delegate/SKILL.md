@@ -48,6 +48,8 @@ scripts/delegate start <task> --brief <local-dir> --kind claude|codex --model <m
 
 `--branch` makes it an implement task on a worktree of the clone, based on `<base>` (default: `HEAD` of `<local-repo>`); `--repo` alone is research in the clone; neither is research in the mailbox. Done when it prints `"status":"working"`.
 
+Inside a Rex terminal, start also runs `scripts/delegate watch <task>`: a background tab named `<task>` in the coordinator's Rex session that mirrors the worker's herdr status into Rex, so the tab and session picker show working, blocked, or done. Pressing `a` in that tab attaches to the worker (detach with `ctrl+b q`); the tab closes after [Clean up](#clean-up). Run `watch` yourself to reopen a closed tab. It stands in until outpost runs Rex itself.
+
 Failed at `check` with no main clone or an untrusted one: hand the one-time setup above to the user. Failed at `agent start`: the worker stayed blocked past startup; look with `scripts/delegate read <task>` and bring it to the user. A herdr stage failing with the server unreachable: run `outpost-herdr` (zsh function) once; if the instance is stopped or released, hand back to the user, since claiming an instance is their call.
 
 ## 4. Wait
