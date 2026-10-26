@@ -149,6 +149,20 @@ cmd_monitor() {
   local task=$1 status shown='' state reported='' key
   b64() { printf %s "$1" | base64 | tr -d '\n'; }
   report() { printf '\e]7501;state=%s:app=outpost:title=%s:msg=%s\a' "$1" "$(b64 "$task")" "$(b64 "worker $2")"; }
+  # A dropped ssh exits 255 and leaves herdr's mouse, paste, and alt-screen
+  # modes on, so reset them and reattach unless it failed right away.
+  attach() {
+    local since rc
+    while :; do
+      since=$SECONDS rc=0
+      ssh -qt "$HOST" ".local/bin/herdr agent attach $(printf %q "$task")" || rc=$?
+      printf '\e[?1000l\e[?1002l\e[?1003l\e[?1006l\e[?1004l\e[?2004l\e[?1049l\e[?25h'
+      while read -rsn1 -t 1; do :; done
+      [ "$rc" -eq 255 ] && [ $((SECONDS - since)) -ge 10 ] || return 0
+      echo "$(date +%T) ssh dropped, reattaching"
+      sleep 2
+    done
+  }
   echo "Watching $task on $HOST. Press a to attach; detach with ctrl+b q."
   while :; do
     status=$(remote '
@@ -156,7 +170,7 @@ stage="agent get"
 if out=$($h agent get "$1"); then jq -r .result.agent.agent_status <<<"$out"; exit; fi
 stage="workspace list"
 $h workspace list | jq -r --arg t "$1" "if any(.result.workspaces[]; .label == \$t) then \"exited\" else \"cleaned\" end"
-' "$task" 2>/dev/null) || status=offline
+' "$task" </dev/null 2>/dev/null) || status=offline
 
     case $status in
       cleaned)
@@ -177,7 +191,7 @@ $h workspace list | jq -r --arg t "$1" "if any(.result.workspaces[]; .label == \
     fi
 
     if read -rsn1 -t 15 key && [ "$key" = a ]; then
-      ssh -qt "$HOST" ".local/bin/herdr agent attach $(printf %q "$task")" || true
+      attach
     fi
   done
 }
