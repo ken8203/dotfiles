@@ -1,11 +1,11 @@
 ---
 name: outpost-delegate
-description: Delegate a research or implementation task to outpost through Herdr. Use when a task should run on outpost, or to follow up on or clean up a delegated task.
+description: Delegate a research or implementation task to outpost through Rex. Use when a task should run on outpost, or to follow up on or clean up a delegated task.
 ---
 
-The local session is the **coordinator**; an agent on outpost is the **worker**. Herdr carries control and state (start, prompt, wait). Files carry content: every task has a **mailbox** on outpost holding the brief going out and the report coming back. Code travels over git: `outpost:<path>` is a normal ssh remote.
+The local session is the **coordinator**; an agent on outpost is the **worker**. Rex carries control and state: each task is a Rex session on outpost's Rex server, reached locally as the Rex host `outpost`. Files carry content: every task has a **mailbox** on outpost holding the brief going out and the report coming back. Code travels over git: `outpost:<path>` is a normal ssh remote.
 
-[`scripts/delegate`](scripts/delegate) runs the mechanical steps, one ssh connection per command, with herdr run on outpost itself. Run it instead of its parts: each extra ssh or `herdr --machine` call costs seconds. On failure it names the stage it stopped at.
+[`scripts/delegate`](scripts/delegate) runs the mechanical steps: `rex -S outpost` for the worker, one ssh connection for files and git. Run it instead of its parts. On failure it names the stage it stopped at.
 
 A new task runs steps 1–5 in order; an existing task jumps to [Follow-up round](#follow-up-round) or [Clean up](#clean-up).
 
@@ -25,7 +25,7 @@ A new task runs steps 1–5 in order; an existing task jumps to [Follow-up round
 
 The worker runs inside the repo it works on, so it picks up that repo's instructions, skills, and Hindsight bank; the mailbox only carries files. Every worker cwd needs folder trust, kept per git repo: the mailbox inherits it from `~/code`, but a clone never does, and its worktrees take it from the clone. So each repo's main clone is set up once by the user, never by the script: `gh repo clone <owner>/<repo> ~/code/<repo>` on outpost, then run `claude` there and accept the trust prompt. The script's default clone is `~/code/<repo>`; pass `--clone` for one that lives elsewhere.
 
-`<task>` is one slug reused as the mailbox, Herdr agent name, and workspace label, so it matches `[a-z][a-z0-9_-]{0,31}` and names no existing mailbox, since mailboxes outlive their tasks. The script refuses both.
+`<task>` is one slug reused as the mailbox and the Rex session's label, so it matches `[a-z][a-z0-9_-]{0,31}` and names no existing mailbox, since mailboxes outlive their tasks. The script refuses both.
 
 A failed stage can still have applied, so inspect remote state before rerunning it.
 
@@ -46,11 +46,11 @@ scripts/delegate start <task> --brief <local-dir> --kind claude|codex --model <m
   [--repo <local-repo> [--clone <clone>] [--branch <branch> [--base <base>]]]
 ```
 
-`--branch` makes it an implement task on a worktree of the clone, based on `<base>` (default: `HEAD` of `<local-repo>`); `--repo` alone is research in the clone; neither is research in the mailbox. Done when it prints `"status":"working"`.
+`--branch` makes it an implement task on a worktree of the clone, based on `<base>` (default: `HEAD` of `<local-repo>`); `--repo` alone is research in the clone; neither is research in the mailbox. Done when it prints a `status`, normally `"working"`.
 
-Inside a Rex terminal, start also runs `scripts/delegate watch <task>`: a background tab named `<task>` in the coordinator's Rex session that mirrors the worker's herdr status into Rex, so the tab and session picker show working, blocked, or done. Pressing `a` in that tab attaches to the worker (detach with `ctrl+b q`) and reattaches if ssh drops; the tab closes after [Clean up](#clean-up). Run `watch` yourself to reopen a closed tab. It stands in until outpost runs Rex itself.
+The user follows the worker in the Rex app under the `outpost` host: the session `<task>` shows working, blocked, or done there, and opening it attaches.
 
-Failed at `check` with no main clone or an untrusted one: hand the one-time setup above to the user. Failed at `agent start`: the worker stayed blocked past startup; look with `scripts/delegate read <task>` and bring it to the user. A herdr stage failing with the server unreachable: run `outpost-herdr` (zsh function) once; if the instance is stopped or released, hand back to the user, since claiming an instance is their call.
+Failed at `check` with no main clone or an untrusted one: hand the one-time setup above to the user. Reported no state within 30s: the worker is held at startup; look with `scripts/delegate read <task>` and bring it to the user. Rex on outpost unreachable: run `outpost-rex` (zsh function) once; if the instance is stopped or released, hand back to the user, since claiming an instance is their call.
 
 ## 4. Wait
 
@@ -58,7 +58,7 @@ Failed at `check` with no main clone or an untrusted one: hand the one-time setu
 scripts/delegate wait <task> <timeout-ms>
 ```
 
-In Claude Code, run it with `run_in_background`, so the coordinator is woken on completion and stays free to delegate more. It reconnects on its own when ssh drops. Done when the worker settles on `idle` or `done`. `blocked` means a question or approval UI: read it with `scripts/delegate read <task>` and bring it to the user to answer.
+In Claude Code, run it with `run_in_background`, so the coordinator is woken on completion and stays free to delegate more. It reconnects on its own when the tunnel drops. Done when the worker settles on `idle` or `done`. `blocked` means a question or approval UI: read it with `scripts/delegate read <task>` and bring it to the user to answer.
 
 ## 5. Collect and verify
 
@@ -91,4 +91,4 @@ Once the user accepts the result:
 scripts/delegate clean <task>
 ```
 
-It keeps the branch, the mailbox as the task's record, and the main clone's workspace that every task on that repo shares. Delete the branch on outpost once it is merged or pushed.
+It ends the Rex session and removes the worktree, keeping the branch, the mailbox as the task's record, and the main clone. Delete the branch on outpost once it is merged or pushed.

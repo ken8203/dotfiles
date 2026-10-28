@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2016,SC2029  # remote scripts expand on outpost
-# The mechanical steps of outpost-delegate, one ssh connection per command.
+# The mechanical steps of outpost-delegate: ssh carries files and git, Rex the worker.
 set -euo pipefail
 
 HOST=outpost
 ROOT=/home/outpost/code
-SELF=$(cd "$(dirname "$0")" && pwd)/$(basename "$0")
+WAIT=$(cd "$(dirname "$0")" && pwd)/wait.lua
 
 usage() {
   cat >&2 <<'EOF'
@@ -13,7 +13,6 @@ usage:
   delegate start <task> --brief <dir> --kind claude|codex --model <m> --effort <e>
                  [--repo <local-repo> [--clone <abs>] [--branch <b> [--base <rev>]]]
   delegate wait <task> <timeout-ms>
-  delegate watch <task>
   delegate read <task>
   delegate followup <task> <review-file>
   delegate collect <task> <local-dir>
@@ -28,15 +27,28 @@ die() {
 }
 
 # Runs a bash script on outpost with positional args. The script names its
-# current step in $stage, reported if it fails, and calls herdr as $h.
+# current step in $stage, reported if it fails.
 remote() {
   local script='set -euo pipefail
 stage=init
-h=~/.local/bin/herdr
 trap '\''rc=$?; [ $rc -eq 0 ] || echo "delegate: failed at $stage" >&2'\'' EXIT
 '$1
   shift
   ssh "$HOST" "bash -c $(printf %q "$script") _ $(printf '%q ' "$@")"
+}
+
+# Rex on outpost. The coordinator's own REX_SESSION and REX_BLOCK name local
+# resources, so they must not become defaults there.
+rx() {
+  env -u REX_SESSION -u REX_BLOCK rex -S "$HOST" "$@"
+}
+
+# Waits up to $2 seconds for the worker to report one of the states in $3.
+await() {
+  local rc=0
+  rx "do" -s "$1" "$WAIT" timeout="$2" states="$3" || rc=$?
+  [ "$rc" -ne 124 ] || die "$1 reported none of $3 within $2s; look with: delegate read $1"
+  return "$rc"
 }
 
 cmd_start() {
@@ -82,9 +94,9 @@ cmd_start() {
   meta=$(jq -nc --arg repo "$repo" --arg clone "$clone" --arg branch "$branch" --arg base "$base_sha" \
     '{repo: $repo, clone: $clone, branch: $branch, base: $base}')
 
-  COPYFILE_DISABLE=1 tar --no-xattrs -C "$brief" -cf - . | remote '
+  local cwd
+  cwd=$(COPYFILE_DISABLE=1 tar --no-xattrs -C "$brief" -cf - . | remote '
 task=$1 clone=$2 branch=$3 kind=$4 meta=$5
-shift 5
 mb='"$ROOT"'/delegate/$task
 stage=check
 if [ -e "$mb" ]; then echo "mailbox $mb already exists" >&2; exit 1; fi
@@ -104,118 +116,43 @@ tar -C "$mb" -xf -
 printf "%s\n" "$meta" >"$mb/.task.json"
 
 if [ -n "$branch" ]; then
-  stage="worktree create"
-  cwd=$clone.$task
-  out=$($h worktree create --cwd "$clone" --branch "$branch" --base "refs/delegate/$task" \
-    --path "$cwd" --label "$task" --no-focus)
+  stage="worktree add"
+  git -C "$clone" worktree add -q -b "$branch" "$clone.$task" "refs/delegate/$task"
+  echo "$clone.$task"
 else
-  stage="workspace create"
-  cwd=${clone:-$mb}
-  out=$($h workspace create --cwd "$cwd" --label "$task" --no-focus)
+  echo "${clone:-$mb}"
 fi
-pane=$(jq -r ".result.root_pane.pane_id" <<<"$out")
+' "$task" "$clone" "$branch" "$kind" "$meta")
 
-stage="agent start"
-# Startup hooks can hold a new agent briefly; a trust prompt holds it until the wait times out.
-$h agent start "$task" --kind "$kind" --pane "$pane" -- "$@" >/dev/null ||
-  $h agent wait "$task" --until idle --timeout 30000 >/dev/null
-
-stage="agent prompt"
-$h agent prompt "$task" "Read $mb/brief.md and follow it. Reply DONE when REPORT.md is written." \
-  --wait --until working --until blocked --timeout 30000 |
-  jq -c --arg pane "$pane" --arg cwd "$cwd" "{pane: \$pane, cwd: \$cwd, status: .result.agent.agent_status}"
-' "$task" "$clone" "$branch" "$kind" "$meta" "${args[@]}"
-
-  [ -z "${REX_SESSION:-}" ] || cmd_watch "$task" || echo "delegate: watch failed; rerun delegate watch $task" >&2
+  rx new "$task" -c "$cwd" -- "$kind" "${args[@]}" \
+    "Read $ROOT/delegate/$task/brief.md and follow it. Reply DONE when REPORT.md is written." >/dev/null ||
+    die "failed at rex new"
+  # Claude reports idle before it takes up the prompt, so idle doesn't count as
+  # started. Startup hooks hold a new agent briefly; a trust prompt holds it
+  # until the timeout.
+  await "$task" 30 working,blocked,done,error | jq -c --arg cwd "$cwd" '{cwd: $cwd} + .'
 }
 
-# Rex can't run on outpost yet, so a tab in the coordinator's Rex session
-# mirrors the worker's herdr status into Rex.
-cmd_watch() {
-  [ $# -eq 1 ] || usage
-  [ -n "${REX_SESSION:-}" ] || die "watch needs a Rex terminal"
-  if rex window ls -s "$REX_SESSION" --json | jq -e --arg t "$1" 'any(.windows[]; .label == $t)' >/dev/null; then
-    echo "already watching $1"
-    return
-  fi
-  rex window new -s "$REX_SESSION" "$1" --focus=false -- "$SELF" monitor "$1" >/dev/null
-  echo "watching $1 in Rex tab $1"
-}
-
-# Runs inside the watch tab. Reports with OSC 7501 only on change, since
-# each report would bring back a done marker the user already dismissed.
-cmd_monitor() {
-  [ $# -eq 1 ] || usage
-  local task=$1 status shown='' state reported='' key
-  b64() { printf %s "$1" | base64 | tr -d '\n'; }
-  report() { printf '\e]7501;state=%s:app=outpost:title=%s:msg=%s\a' "$1" "$(b64 "$task")" "$(b64 "worker $2")"; }
-  # A dropped ssh exits 255 and leaves herdr's mouse, paste, and alt-screen
-  # modes on, so reset them and reattach unless it failed right away.
-  attach() {
-    local since rc
-    while :; do
-      since=$SECONDS rc=0
-      ssh -qt "$HOST" ".local/bin/herdr agent attach $(printf %q "$task")" || rc=$?
-      printf '\e[?1000l\e[?1002l\e[?1003l\e[?1006l\e[?1004l\e[?2004l\e[?1049l\e[?25h'
-      while read -rsn1 -t 1; do :; done
-      [ "$rc" -eq 255 ] && [ $((SECONDS - since)) -ge 10 ] || return 0
-      echo "$(date +%T) ssh dropped, reattaching"
-      sleep 2
-    done
-  }
-  echo "Watching $task on $HOST. Press a to attach; detach with ctrl+b q."
-  while :; do
-    status=$(remote '
-stage="agent get"
-if out=$($h agent get "$1"); then jq -r .result.agent.agent_status <<<"$out"; exit; fi
-stage="workspace list"
-$h workspace list | jq -r --arg t "$1" "if any(.result.workspaces[]; .label == \$t) then \"exited\" else \"cleaned\" end"
-' "$task" </dev/null 2>/dev/null) || status=offline
-
-    case $status in
-      cleaned)
-        report clear "$status"
-        return
-        ;;
-      offline) state=$reported ;;
-      working | blocked) state=$status ;;
-      idle | done) state="done" ;;
-      exited) state=error ;;
-      *) state=idle ;;
-    esac
-    [ "$status" = "$shown" ] || echo "$(date +%T) $status"
-    shown=$status
-    if [ "$state" != "$reported" ]; then
-      report "$state" "$status"
-      reported=$state
-    fi
-
-    if read -rsn1 -t 15 key && [ "$key" = a ]; then
-      attach
-    fi
-  done
-}
-
-# The cloudflared tunnel drops long ssh sessions (exit 255) while the worker
-# keeps running, so reconnect until the deadline.
+# The cloudflared tunnel under the Rex forward drops now and then while the
+# worker keeps running, so retry until the deadline.
 cmd_wait() {
   [ $# -eq 2 ] || usage
-  local left rc
+  local left
   while :; do
-    left=$(($2 - SECONDS * 1000))
+    left=$((($2 - SECONDS * 1000) / 1000))
     [ "$left" -gt 0 ] || die "timed out waiting for $1"
-    rc=0
-    remote 'stage="agent wait"; $h agent wait "$1" --timeout "$2" | jq -c "{status: .result.agent.agent_status}"' \
-      "$1" "$left" || rc=$?
-    [ "$rc" -eq 255 ] || return "$rc"
-    echo "delegate: ssh dropped, reconnecting" >&2
+    await "$1" "$left" idle,done,blocked,error && return
+    if rx ls >/dev/null 2>&1 && ! rx session inspect "$1" >/dev/null 2>&1; then
+      die "no Rex session $1 on $HOST"
+    fi
+    echo "delegate: Rex on $HOST unreachable, retrying" >&2
     sleep 5
   done
 }
 
 cmd_read() {
   [ $# -eq 1 ] || usage
-  remote 'stage="agent read"; $h agent read "$1" --source recent-unwrapped --lines 120' "$1"
+  rx capture -s "$1" --trim --unwrap | tail -n 120
 }
 
 cmd_followup() {
@@ -224,16 +161,10 @@ cmd_followup() {
   name=$(basename "$2")
   [[ $name =~ ^review-[0-9]+\.md$ ]] || die "review file must be named review-<n>.md"
 
-  remote '
-mb='"$ROOT"'/delegate/$1
-stage=ship
-test -d "$mb"
-cat >"$mb/$2"
-stage="agent prompt"
-$h agent prompt "$1" "Read $mb/$2 and address it. Update REPORT.md, then reply DONE." \
-  --wait --until working --until blocked --timeout 30000 |
-  jq -c "{status: .result.agent.agent_status}"
-' "$1" "$name" <"$2"
+  remote 'stage=ship; test -d '"$ROOT"'/delegate/"$1"; cat >'"$ROOT"'/delegate/"$1/$2"' "$1" "$name" <"$2"
+  rx send -s "$1" "Read $ROOT/delegate/$1/$name and address it. Update REPORT.md, then reply DONE."
+  rx send-key -s "$1" enter
+  await "$1" 30 working,blocked
 }
 
 cmd_collect() {
@@ -258,20 +189,16 @@ cmd_collect() {
 
 cmd_clean() {
   [ $# -eq 1 ] || usage
+  rx kill "$1" >/dev/null 2>&1 || echo "no Rex session $1 on $HOST"
   remote '
 meta='"$ROOT"'/delegate/$1/.task.json
-stage="workspace list"
-ws=$($h workspace list | jq -r --arg t "$1" ".result.workspaces[] | select(.label == \$t) | .workspace_id")
-if [ -z "$ws" ]; then echo "no workspace labeled $1" >&2; exit 1; fi
+clone=$(jq -r .clone "$meta")
 if [ -n "$(jq -r .branch "$meta")" ]; then
   stage="worktree remove"
-  $h worktree remove --workspace "$ws" >/dev/null
-  git -C "$(jq -r .clone "$meta")" update-ref -d "refs/delegate/$1"
-else
-  stage="workspace close"
-  $h workspace close "$ws" >/dev/null
+  git -C "$clone" worktree remove "$clone.$1"
+  git -C "$clone" update-ref -d "refs/delegate/$1"
 fi
-echo "cleaned $1 ($ws)"
+echo "cleaned $1"
 ' "$1"
 }
 
@@ -279,6 +206,6 @@ echo "cleaned $1 ($ws)"
 cmd=$1
 shift
 case $cmd in
-  start | wait | watch | monitor | read | followup | collect | clean) "cmd_$cmd" "$@" ;;
+  start | wait | read | followup | collect | clean) "cmd_$cmd" "$@" ;;
   *) usage ;;
 esac
