@@ -38,63 +38,141 @@ alias rd="revdiff"
 [[ -x /opt/homebrew/bin/zed ]] && alias authzed="/opt/homebrew/bin/zed"
 
 # Outpost
-# Bring up herdr on an Outpost instance for `herdr --machine`. A fresh instance
-# ships an older herdr in /usr/bin and nothing restarts the server after
-# stop/start or release/claim, where herdr's background reconnect only ever
-# discovers a server. Installs into ~/.local/bin, which lives on the data disk
-# and wins over /usr/bin.
-outpost-herdr() {
+# Bring up Rex on an Outpost instance and the forward the Rex app reaches it by.
+# A new instance keeps only the data disk, so Rex lives in ~/.local/bin and runs
+# as a systemd user service, and the bash login shell of the image hands Rex
+# terminals to zsh, since chsh needs root and dies with the instance. The server
+# listens only on its Unix socket; scripts/outpost-rex-forward, built here and
+# kept up by a launchd agent, carries it to a loopback port.
+# Usage: outpost-rex [host]
+outpost-rex() {
   emulate -L zsh
-  local host="${1:-outpost}"
-  local version arch
-  version=$(herdr --version | awk '{ print $2 }') || return 1
+  local host=${1:-outpost} port sock dir token src bin label plist tmp
+  port=$(( 7297 + $(cksum <<<"$host" | cut -d' ' -f1) % 1000 ))
 
-  if [[ $(ssh "$host" '~/.local/bin/herdr --version 2>/dev/null') != "herdr $version" ]]; then
-    case $(ssh "$host" uname -m) in
-      x86_64|amd64)  arch=x86_64 ;;
-      aarch64|arm64) arch=aarch64 ;;
-      *) echo "Unsupported remote architecture" >&2; return 1 ;;
-    esac
-    echo "→ installing herdr $version on $host"
-    curl -fsSL --retry 3 "https://github.com/herdrdev/herdr/releases/download/v$version/herdr-linux-$arch" \
-      | ssh "$host" 'mkdir -p ~/.local/bin && cat > ~/.local/bin/herdr.tmp && chmod 755 ~/.local/bin/herdr.tmp && mv -f ~/.local/bin/herdr.tmp ~/.local/bin/herdr' \
-      || return 1
-    ssh "$host" '~/.local/bin/herdr server stop' >/dev/null 2>&1
+  sock=$(ssh "$host" 'bash -s' <<'EOF'
+set -euo pipefail
+bin=~/.local/bin/rex
+rel=$(curl -fsSL --retry 3 https://blob.superlogical.com/api/releases/rex/snapshot)
+if [ "$("$bin" version 2>/dev/null | sed -n 's/^commit: //p')" != "$(jq -r .commit <<<"$rel")" ]; then
+  art=$(jq -c --arg f "rex-linux-$(dpkg --print-architecture).tar.gz" '.artifacts[] | select(.filename == $f)' <<<"$rel")
+  dir=$(mktemp -d)
+  trap 'rm -rf "$dir"' EXIT
+  curl -fsSL --retry 3 -o "$dir/rex.tgz" "$(jq -r .downloadUrl <<<"$art")"
+  echo "$(jq -r .sha256 <<<"$art")  $dir/rex.tgz" | sha256sum -c --quiet >&2
+  tar -xzf "$dir/rex.tgz" -C "$dir"
+  install -Dm755 "$dir/rex" "$bin"
+  echo "installed $("$bin" version | head -1); the server runs it from its next start" >&2
+fi
+
+mkdir -p ~/.config/systemd/user
+cat >~/.config/systemd/user/rex.service <<'UNIT'
+[Unit]
+Description=Rex server
+
+[Service]
+ExecStart=%h/.local/bin/rex server run
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+UNIT
+systemctl --user daemon-reload
+systemctl --user enable --now rex.service 2>/dev/null
+"$bin" terminfo setup >/dev/null
+
+grep -qs REX_SESSION ~/.bashrc || cat >>~/.bashrc <<'RC'
+
+# Rex starts terminals in the passwd shell, which every new Outpost instance resets to bash.
+[[ $- == *i* && -n ${REX_SESSION:-} ]] && exec zsh -l
+RC
+echo "/run/user/$(id -u)/rex/server.sock"
+EOF
+  ) || return 1
+
+  # The forward admits only clients that present this token; see its source.
+  dir=~/Library/Application\ Support/outpost-rex-forward
+  mkdir -p -m 700 "$dir" || return 1
+  [[ -s $dir/$host.token ]] || (umask 077 && openssl rand -hex 16 >"$dir/$host.token") || return 1
+  token=$(<"$dir/$host.token")
+
+  src=${functions_source[outpost-rex]:A:h:h}/scripts/outpost-rex-forward
+  bin=$dir/outpost-rex-forward
+  if [[ ! -x $bin || -n $(find "$src" -newer "$bin" -type f) ]]; then
+    (cd "$src" && go build -o "$bin" .) || return 1
   fi
 
-  ssh "$host" '~/.local/bin/herdr status server 2>/dev/null | grep -q "^status: running$" \
-    || { setsid nohup ~/.local/bin/herdr server >/dev/null 2>&1 </dev/null & sleep 2; }
-    ~/.local/bin/herdr status server'
+  label=dotfiles.rex-forward.$host
+  plist=~/Library/LaunchAgents/$label.plist
+  tmp=$(mktemp) || return 1
+  plutil -create xml1 "$tmp" &&
+    plutil -insert Label -string "$label" "$tmp" &&
+    plutil -insert ProgramArguments -json "$(jq -nc --arg b "$bin" --arg h "$host" --arg p "$port" --arg s "$sock" '[$b, $h, $p, $s]')" "$tmp" &&
+    plutil -insert StandardErrorPath -string ~/Library/Logs/$label.log "$tmp" &&
+    plutil -insert EnvironmentVariables -json "$(jq -nc --arg p "${commands[cloudflared]:h}:/usr/bin:/bin" '{PATH: $p}')" "$tmp" &&
+    plutil -insert RunAtLoad -bool true "$tmp" &&
+    plutil -insert KeepAlive -bool true "$tmp" || { rm -f "$tmp"; return 1; }
+  # A rebuilt binary also needs a restart, which only a changed plist gets.
+  if [[ $bin -nt $plist ]] || ! cmp -s "$tmp" "$plist"; then
+    mv "$tmp" "$plist"
+    launchctl bootout "gui/$UID/$label" 2>/dev/null
+  else
+    rm -f "$tmp"
+  fi
+  launchctl print "gui/$UID/$label" >/dev/null 2>&1 || launchctl bootstrap "gui/$UID" "$plist" || return 1
+
+  rex hosts edit "$host" --endpoint "http://$token@127.0.0.1:$port" >/dev/null 2>&1 ||
+    rex hosts add "$host" "http://$token@127.0.0.1:$port" --icon server >/dev/null || return 1
+
+  # The Rex app keeps hosts of its own, read only at launch, that no CLI or
+  # config reaches, so write this one into its private store. Stop at a format
+  # this doesn't know rather than guess.
+  local servers
+  tmp=$(mktemp) || return 1
+  defaults export com.superlogical.rex "$tmp" &&
+    servers=$(/usr/libexec/PlistBuddy -c 'Print :RexSync.servers' "$tmp" 2>/dev/null)
+  rm -f "$tmp"
+  servers=${servers:-'{"formatVersion":1,"records":[]}'}
+  if ! jq -e '.formatVersion == 1' <<<"$servers" >/dev/null 2>&1; then
+    echo "Add $host in the Rex app by hand (Add Remote Host…): its host store changed format" >&2
+  elif ! jq -e --arg h "$host" --arg l "http://$token@127.0.0.1:$port" \
+    'any(.records[]; .name == $h and .locators == [$l])' <<<"$servers" >/dev/null; then
+    servers=$(jq -c --arg h "$host" --arg t "$token" --arg u "http://127.0.0.1:$port" --arg id "$(uuidgen)" '
+      (first(.records[] | select(.name == $h) | .id) // $id) as $id
+      | .records = [.records[] | select(.name != $h)] + [{
+          id: $id, name: $h, icon: "server", preferredAccount: $t, preferredURL: $u,
+          locators: ["http://\($t)@\($u | ltrimstr("http://"))"]}]' <<<"$servers") &&
+      defaults write com.superlogical.rex RexSync.servers -data "$(printf %s "$servers" | xxd -p | tr -d '\n')" &&
+      echo "Added $host to the Rex app; quit and reopen it to see the host" >&2
+  fi
+
+  # The forward retries every 10s, so give it a couple of rounds.
+  local i
+  for i in {1..30}; do
+    rex -S "$host" server status >/dev/null 2>&1 && return
+    sleep 1
+  done
+  echo "Rex on $host is unreachable at 127.0.0.1:$port" >&2
+  return 1
 }
 
-# Wake an Outpost instance and bring its herdr machine back online.
-# herdr's background connection can't open a browser for Cloudflare Access, so
-# an expired token leaves the machine at `! auth` until the login happens here.
+# Wake an Outpost instance and bring its Rex server back within reach.
+# The forward can't open a browser for Cloudflare Access, so an expired token
+# keeps it down until the login happens here.
 # Usage: outpost-up [name]
 outpost-up() {
   emulate -L zsh
-  local name=$1 host=outpost${1:+-$1} app id repaired=0
+  local name=$1 host=outpost${1:+-$1} app
   for app in outpost-api.dcard.io outpost-ssh.dcard.io; do
     cloudflared access token --app "https://$app" >/dev/null 2>&1 && continue
     cloudflared access login --app "https://$app" >/dev/null || return 1
-    repaired=1
   done
   # claim, not start: start fails once the instance has been released, and
   # claim also resumes a stopped one.
   if ! outpost status $name | grep -q '^Status *running$'; then
     outpost claim $name --instance-type e6-standard-8 || return 1
-    repaired=1
   fi
-  outpost-herdr "$host" >/dev/null || return 1
-  id=$(herdr machine list | awk -v h="$host" '$3 == h { print $1 }')
-  [[ -n $id ]] || { echo "No herdr machine for $host" >&2; return 1; }
-  [[ $(herdr machine status "$id") == *$'\treachable' ]] || herdr machine reconnect "$id" || return 1
-  # Open clients back off up to 2 minutes while the machine is down; only a
-  # fresh profile retries at once. They poll the catalog every second, so the
-  # disabled state has to outlive one poll.
-  if (( repaired )); then
-    herdr machine disable "$id" >/dev/null && sleep 2 && herdr machine enable "$id" >/dev/null
-  fi
+  outpost-rex "$host" || return 1
   echo "$host ready"
 }
 

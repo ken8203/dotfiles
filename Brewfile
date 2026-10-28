@@ -37,6 +37,7 @@ brew "worktrunk"
 # Runtime management
 brew "fnm"
 brew "pnpm"
+brew "go"
 
 # Cloud
 cask "gcloud-cli"
