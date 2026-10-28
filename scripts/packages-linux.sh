@@ -154,10 +154,16 @@ need circleci sh -c \
 need yq fetch_bin yq \
   "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_$ARCH_GO"
 
-# Takes whatever is current. `outpost-herdr` in .aliases instead pins the remote
-# to the local Mac's build, because there the client and server have to match.
-need herdr fetch_bin herdr \
-  "https://github.com/herdrdev/herdr/releases/latest/download/herdr-linux-$ARCH_GNU"
+# Rex's Linux server is still in testing: its package repos need a token, but the
+# release archives behind them don't.
+install_rex() {
+  local url
+  url=$(curl -fsSL --retry 3 https://blob.superlogical.com/api/releases/rex/snapshot \
+    | jq -re --arg f "rex-linux-$ARCH_GO.tar.gz" '.artifacts[] | select(.filename == $f) | .downloadUrl') \
+    || return 1
+  fetch_tar rex "$url" rex
+}
+need rex install_rex
 
 need agent-browser fetch_bin agent-browser \
   "https://github.com/vercel-labs/agent-browser/releases/latest/download/agent-browser-linux-$ARCH_NODE"

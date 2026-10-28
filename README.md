@@ -65,7 +65,6 @@ dotfiles/
 ├── ghostty/.config/ghostty/config
 ├── starship/.config/starship.toml
 ├── bat/.config/bat/config
-├── herdr/.config/herdr/config.toml
 ├── revdiff/.config/revdiff/config
 ├── agents/{.claude/CLAUDE.md, .codex/AGENTS.md, .agents/}
 ├── vim/.vimrc, .vim/
@@ -107,7 +106,7 @@ npx @vectorize-io/hindsight-coding-agents install codex --server self-hosted --a
 
 ## Stack
 
-- Terminal: [Ghostty](https://ghostty.org/)
+- Terminal: [Ghostty](https://ghostty.org/), [Rex](https://www.superlogical.com/rex)
 - Shell: zsh
 - Editor: vim
 - Prompt: [Starship](https://starship.rs/)

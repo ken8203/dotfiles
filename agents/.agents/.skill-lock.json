@@ -349,15 +349,6 @@
       "installedAt": "2026-07-12T16:13:09.735Z",
       "updatedAt": "2026-09-18T06:02:45.394Z"
     },
-    "herdr": {
-      "source": "herdrdev/herdr",
-      "sourceType": "github",
-      "sourceUrl": "https://github.com/herdrdev/herdr.git",
-      "skillPath": "skills/herdr/SKILL.md",
-      "skillFolderHash": "6985a5e8418d43171c45c2a9e04b02de7308e1d8",
-      "installedAt": "2026-07-22T08:56:17.577Z",
-      "updatedAt": "2026-09-18T06:02:36.357Z"
-    },
     "resolving-merge-conflicts": {
       "source": "mattpocock/skills",
       "sourceType": "github",

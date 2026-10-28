@@ -9,7 +9,7 @@ OS="$(uname -s)"
 echo "Installing dotfiles for $OS..."
 
 # GUI packages are macOS-only; Linux is treated as a headless dev box.
-PACKAGES="zsh git tmux starship vim bat revdiff herdr agents"
+PACKAGES="zsh git tmux starship vim bat revdiff agents"
 
 case "$OS" in
   Darwin)

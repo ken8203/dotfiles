@@ -27,7 +27,7 @@ forgetting the second is the common failure mode:
 
 3. **Wire it into `install.sh`.** Append the package name to the `PACKAGES` variable:
    ```sh
-   PACKAGES="zsh git tmux starship vim bat revdiff herdr agents"
+   PACKAGES="zsh git tmux starship vim bat revdiff agents"
    ```
    Keep the list on one line, space-separated. **This step is mandatory** — without it
    `./install.sh` will never stow the new package.
