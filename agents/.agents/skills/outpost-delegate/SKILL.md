@@ -1,11 +1,21 @@
 ---
 name: outpost-delegate
-description: Delegate a research or implementation task to outpost through Rex. Use when a task should run on outpost, or to follow up on or clean up a delegated task.
+description: Delegate a research or implementation task to a worker on outpost. Use when a task should run on outpost, or to follow up on or clean up a delegated task.
 ---
 
-The local session is the **coordinator**; an agent on outpost is the **worker**. Rex carries control and state: each task is a Rex session on outpost's Rex server, reached locally as the Rex host `outpost`. Files carry content: every task has a **mailbox** on outpost holding the brief going out and the report coming back. Code travels over git: `outpost:<path>` is a normal ssh remote.
+The local session is the **coordinator**; an agent on outpost is the **worker**. The **backend** carries control and state. `start` picks it from the coordinator's terminal and the task keeps it for life:
 
-[`scripts/delegate`](scripts/delegate) runs the mechanical steps: `rex -S outpost` for the worker, one ssh connection for files and git. Run it instead of its parts. On failure it names the stage it stopped at.
+| Backend | Picked in | Worker | The user follows it | Unreachable |
+|---|---|---|---|---|
+| `hc` | Herdr (`HC_TERMINAL_SOCKET`) | a herdr-core terminal `<task>` | under the Herdr machine `outpost` | run `outpost-hc` |
+| `rex` | Rex (`REX_SESSION`) | a Rex session `<task>` | under the Rex host `outpost` | run `outpost-rex` |
+| `ssh` | anywhere else | a headless `claude -p` or `codex exec`, one run per turn | only through `scripts/delegate read <task>`; never `blocked` | nothing to bring up |
+
+`outpost-hc` and `outpost-rex` are zsh functions. If the instance itself is stopped or released, hand back to the user, since claiming an instance is their call.
+
+Files carry content: every task has a **mailbox** on outpost holding the brief going out and the report coming back. Code travels over git: `outpost:<path>` is a normal ssh remote.
+
+[`scripts/delegate`](scripts/delegate) runs the mechanical steps. Run it instead of its parts. On failure it names the stage it stopped at.
 
 A new task runs steps 1–5 in order; an existing task jumps to [Follow-up round](#follow-up-round) or [Clean up](#clean-up).
 
@@ -19,13 +29,14 @@ A new task runs steps 1–5 in order; an existing task jumps to [Follow-up round
     brief.md                     coordinator → worker
     review-<n>.md                coordinator → worker, follow-up rounds
     REPORT.md                    worker → coordinator
-    .task.json                   the script's record of repo, clone, branch, and base
+    .task.json                   the script's record of repo, clone, branch, base, and backend
+    .worker/                     ssh backend only: the runs' log, last exit code, and pid
   delegate/<project>/common.md   optional context shared by one initiative's tasks
 ```
 
 The worker runs inside the repo it works on, so it picks up that repo's instructions, skills, and Hindsight bank; the mailbox only carries files. Every worker cwd needs folder trust, kept per git repo: the mailbox inherits it from `~/code`, but a clone never does, and its worktrees take it from the clone. So each repo's main clone is set up once by the user, never by the script: `gh repo clone <owner>/<repo> ~/code/<repo>` on outpost, then run `claude` there and accept the trust prompt. The script's default clone is `~/code/<repo>`; pass `--clone` for one that lives elsewhere.
 
-`<task>` is one slug reused as the mailbox and the Rex session's label, so it matches `[a-z][a-z0-9_-]{0,31}` and names no existing mailbox, since mailboxes outlive their tasks. The script refuses both.
+`<task>` is one slug reused as the mailbox and the worker's name in Herdr or Rex, so it matches `[a-z][a-z0-9_-]{0,31}` and names no existing mailbox, since mailboxes outlive their tasks. The script refuses both.
 
 A failed stage can still have applied, so inspect remote state before rerunning it.
 
@@ -48,9 +59,7 @@ scripts/delegate start <task> --brief <local-dir> --kind claude|codex --model <m
 
 `--branch` makes it an implement task on a worktree of the clone, based on `<base>` (default: `HEAD` of `<local-repo>`); `--repo` alone is research in the clone; neither is research in the mailbox. Done when it prints a `status`, normally `"working"`.
 
-The user follows the worker in the Rex app under the `outpost` host: the session `<task>` shows working, blocked, or done there, and opening it attaches.
-
-Failed at `check` with no main clone or an untrusted one: hand the one-time setup above to the user. Reported no state within 30s: the worker is held at startup; look with `scripts/delegate read <task>` and bring it to the user. Rex on outpost unreachable: run `outpost-rex` (zsh function) once; if the instance is stopped or released, hand back to the user, since claiming an instance is their call.
+Failed at `check` with no main clone or an untrusted one: hand the one-time setup above to the user. Reported no state within 30s: the worker is held at startup; look with `scripts/delegate read <task>` and bring it to the user. Backend unreachable: see the table.
 
 ## 4. Wait
 
@@ -58,7 +67,7 @@ Failed at `check` with no main clone or an untrusted one: hand the one-time setu
 scripts/delegate wait <task> <timeout-ms>
 ```
 
-In Claude Code, run it with `run_in_background`, so the coordinator is woken on completion and stays free to delegate more. It reconnects on its own when the tunnel drops. Done when the worker settles on `idle` or `done`. `blocked` means a question or approval UI: read it with `scripts/delegate read <task>` and bring it to the user to answer.
+In Claude Code, run it with `run_in_background`, so the coordinator is woken on completion and stays free to delegate more. It reconnects on its own when the tunnel drops. Done when the worker settles on `idle` or `done`. Any other state needs the user: read it with `scripts/delegate read <task>` and bring it to them. `blocked` is a question or approval UI to answer; `error` or `exited` is a worker that failed or quit.
 
 ## 5. Collect and verify
 
@@ -91,4 +100,4 @@ Once the user accepts the result:
 scripts/delegate clean <task>
 ```
 
-It ends the Rex session and removes the worktree, keeping the branch, the mailbox as the task's record, and the main clone. Delete the branch on outpost once it is merged or pushed.
+It ends the worker and removes the worktree, keeping the branch, the mailbox as the task's record, and the main clone. Delete the branch on outpost once it is merged or pushed.

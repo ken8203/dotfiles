@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2016,SC2029  # remote scripts expand on outpost
-# The mechanical steps of outpost-delegate: ssh carries files and git, Rex the worker.
+# The mechanical steps of outpost-delegate: ssh carries files and git; the
+# worker runs under the backend the coordinator's terminal reaches outpost by.
 set -euo pipefail
 
 HOST=outpost
@@ -37,18 +38,290 @@ trap '\''rc=$?; [ $rc -eq 0 ] || echo "delegate: failed at $stage" >&2'\'' EXIT
   ssh "$HOST" "bash -c $(printf %q "$script") _ $(printf '%q ' "$@")"
 }
 
-# Rex on outpost. The coordinator's own REX_SESSION and REX_BLOCK name local
-# resources, so they must not become defaults there.
+# A task's record, written at start.
+meta() {
+  remote 'stage="read task"; cat '"$ROOT"'/delegate/"$1"/.task.json' "$1"
+}
+
+# --- Rex: a Rex session on outpost's Rex server ---
+
+# The coordinator's own REX_SESSION and REX_BLOCK name local resources, so they
+# must not become defaults there.
 rx() {
   env -u REX_SESSION -u REX_BLOCK rex -S "$HOST" "$@"
 }
 
 # Waits up to $2 seconds for the worker to report one of the states in $3.
-await() {
+rex_await() {
   local rc=0
   rx "do" -s "$1" "$WAIT" timeout="$2" states="$3" || rc=$?
   [ "$rc" -ne 124 ] || die "$1 reported none of $3 within $2s; look with: delegate read $1"
   return "$rc"
+}
+
+rex_launch() {
+  local task=$1 cwd=$2 prompt=$3
+  shift 3
+  rx new "$task" -c "$cwd" -- "$@" "$prompt" >/dev/null || die "failed at rex new"
+  # Claude reports idle before it takes up the prompt, so idle doesn't count as
+  # started. Startup hooks hold a new agent briefly; a trust prompt holds it
+  # until the timeout.
+  rex_await "$task" 30 working,blocked,done,error
+}
+
+# The cloudflared tunnel under the Rex forward drops now and then while the
+# worker keeps running, so retry until the deadline.
+rex_wait() {
+  local left
+  while :; do
+    left=$(($2 - SECONDS))
+    [ "$left" -gt 0 ] || die "timed out waiting for $1"
+    rex_await "$1" "$left" idle,done,blocked,error && return
+    if rx ls >/dev/null 2>&1 && ! rx session inspect "$1" >/dev/null 2>&1; then
+      die "no Rex session $1 on $HOST"
+    fi
+    echo "delegate: Rex on $HOST unreachable, retrying" >&2
+    sleep 5
+  done
+}
+
+rex_read() {
+  rx capture -s "$1" --trim --unwrap | tail -n 120
+}
+
+rex_send() {
+  rx send -s "$1" "$2"
+  rx send-key -s "$1" enter
+  rex_await "$1" 30 working,blocked
+}
+
+rex_kill() {
+  rx kill "$1" >/dev/null 2>&1 || echo "no Rex session $1 on $HOST"
+}
+
+# --- hc: a terminal on outpost's herdr-core, the machine `outpost` in Herdr ---
+
+hcx() {
+  herdr-core "$@"
+}
+
+# The worker's status, or exited once its program has ended.
+hc_status() {
+  hcx get --json "$HOST/$1" | jq -r 'if .state == "finished" then "exited" else .status.state // "none" end'
+}
+
+# Waits up to $2 seconds for the worker to report one of the states in $3.
+# hc wait returns at once on a settled status, so it only paces the loop.
+hc_await() {
+  local deadline=$((SECONDS + $2)) status t
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    if status=$(hc_status "$1" 2>/dev/null); then
+      if [[ ,$3,exited, == *",$status,"* ]]; then
+        jq -nc --arg s "$status" '{status: $s}'
+        return
+      fi
+    elif hcx get --json "$HOST/$1" 2>&1 >/dev/null | grep -q '"not_found"'; then
+      die "no hc terminal $1 on $HOST"
+    else
+      echo "delegate: hc on $HOST unreachable, retrying" >&2
+      sleep 4
+    fi
+    t=$((deadline - SECONDS))
+    hcx wait --json "$HOST/$1" --timeout $((t > 60 ? 60 : t < 1 ? 1 : t)) >/dev/null 2>&1 || true
+    sleep 1
+  done
+  return 124
+}
+
+hc_launch() {
+  local task=$1 cwd=$2 prompt=$3 rc=0
+  shift 3
+  # Codex runs its commands outside hc unless it keeps no daemon.
+  [ "$1" != codex ] || set -- "$@" --no-daemon
+  # No parent: the coordinator's terminal is not the worker's owner, and the
+  # worker must outlive this script.
+  hcx run --json --on "$HOST" --bg --no-parent --name "$task" --cwd "$cwd" "$@" "$prompt" >/dev/null ||
+    die "failed at hc run"
+  hc_await "$task" 30 working,blocked,done,error || rc=$?
+  [ "$rc" -ne 124 ] || die "$task reported nothing within 30s; look with: delegate read $task"
+  return "$rc"
+}
+
+hc_wait() {
+  local rc=0
+  hc_await "$1" $(($2 - SECONDS)) idle,done,blocked,error || rc=$?
+  [ "$rc" -ne 124 ] || die "timed out waiting for $1"
+  return "$rc"
+}
+
+hc_read() {
+  hcx read "$HOST/$1" --lines 120 | tail -n 120
+}
+
+hc_send() {
+  hcx send "$HOST/$1" "$2" >/dev/null
+  hc_await "$1" 30 working,blocked || die "$1 took up nothing within 30s; look with: delegate read $1"
+}
+
+hc_kill() {
+  hcx kill "$HOST/$1" >/dev/null 2>&1 || true
+  hcx rm "$HOST/$1" >/dev/null 2>&1 || echo "no hc terminal $1 on $HOST"
+}
+
+# --- ssh: a headless run in the background, kept in the mailbox's .worker ---
+# One run per turn: log collects every turn's output, exit holds the last
+# run's code, and pid its process group.
+
+# Runs one turn in $2 from the argv after it.
+ssh_run() {
+  remote '
+w='"$ROOT"'/delegate/$1/.worker cwd=$2
+shift 2
+stage=launch
+mkdir -p "$w"
+rm -f "$w/exit"
+cd "$cwd"
+setsid nohup bash -c "\"\$@\" >>\"\$0/log\" 2>&1 </dev/null; echo \$? >\"\$0/exit\"" "$w" "$@" >/dev/null 2>&1 </dev/null &
+echo $! >"$w/pid"
+' "$@"
+}
+
+# Prints the worker's status once it settles or $2 seconds pass, when it is
+# still working.
+ssh_poll() {
+  remote '
+w='"$ROOT"'/delegate/$1/.worker
+stage=wait
+s=working
+while [ ! -e "$w/exit" ] && kill -0 "$(cat "$w/pid")" 2>/dev/null && [ $SECONDS -lt "$2" ]; do
+  sleep 3
+done
+if [ -e "$w/exit" ]; then
+  [ "$(cat "$w/exit")" = 0 ] && s=done || s=error
+elif ! kill -0 "$(cat "$w/pid")" 2>/dev/null; then
+  s=error
+fi
+jq -nc --arg s "$s" "{status: \$s}"
+' "$@"
+}
+
+# Runs one turn of a $4 worker in $2 with the agent flags after $5, resuming
+# session $5 unless it is empty.
+ssh_turn() {
+  local task=$1 cwd=$2 prompt=$3 kind=$4 resume=$5
+  shift 5
+  case $kind in
+    claude)
+      ssh_run "$task" "$cwd" claude -p "$@" --output-format stream-json --verbose \
+        ${resume:+--resume "$resume"} "$prompt"
+      ;;
+    codex)
+      ssh_run "$task" "$cwd" codex exec "$@" --skip-git-repo-check --json \
+        ${resume:+resume "$resume"} "$prompt"
+      ;;
+  esac
+}
+
+ssh_launch() {
+  local task=$1 cwd=$2 prompt=$3 kind=$4
+  shift 4
+  ssh_turn "$task" "$cwd" "$prompt" "$kind" '' "$@"
+  # A run that fails at startup ends at once; anything later is the wait's.
+  sleep 3
+  ssh_poll "$task" 0
+}
+
+# The cloudflared tunnel drops long ssh sessions (exit 255) while the worker
+# keeps running, so reconnect until the deadline.
+ssh_wait() {
+  local left rc out
+  while :; do
+    left=$(($2 - SECONDS))
+    [ "$left" -gt 0 ] || die "timed out waiting for $1"
+    rc=0
+    out=$(ssh_poll "$1" "$left") || rc=$?
+    if [ "$rc" -ne 255 ]; then
+      [ "$rc" -eq 0 ] || return "$rc"
+      [ "$out" != '{"status":"working"}' ] || die "timed out waiting for $1"
+      echo "$out"
+      return
+    fi
+    echo "delegate: ssh dropped, reconnecting" >&2
+    sleep 5
+  done
+}
+
+# Renders Claude's stream-json and Codex's --json events as text.
+ssh_read() {
+  remote '
+stage=read
+jq -rR '\''. as $l | (try fromjson catch null) as $e
+| if $e == null then $l
+  elif $e.type == "assistant" then $e.message.content[]?
+    | if .type == "text" then .text
+      elif .type == "tool_use" then "→ \(.name) \(.input | tostring | .[:160])"
+      else empty end
+  elif $e.type == "item.completed" then $e.item
+    | if .type == "agent_message" then .text
+      elif .type == "command_execution" then "→ \(.command)"
+      else empty end
+  elif $e.type == "result" then "[\($e.subtype)] \($e.result // "")"
+  else empty end'\'' '"$ROOT"'/delegate/"$1"/.worker/log | tail -n 120
+' "$1"
+}
+
+# Resumes the session the log last names: Claude tags every event with its
+# session_id, Codex opens with a thread_id.
+ssh_send() {
+  local kind model effort cwd session
+  { read -r kind; read -r model; read -r effort; read -r cwd; } < <(jq -r '.kind, .model, .effort, .cwd' <<<"$3")
+  session=$(remote '
+w='"$ROOT"'/delegate/$1/.worker
+stage=check
+if [ ! -e "$w/exit" ]; then echo "$1 is still running; wait for it first" >&2; exit 1; fi
+jq -rR "fromjson? | .thread_id // .session_id // empty" "$w/log" | tail -n 1
+' "$1")
+  # The worker can write both the record and the log, so a value shaped like a
+  # flag must not reach the next run's argv.
+  [[ $session =~ ^[0-9a-f-]{36}$ ]] || die "no session in $1's log"
+  [[ $model =~ ^[A-Za-z0-9][][A-Za-z0-9._:-]*$ && $effort =~ ^[a-z]+$ ]] ||
+    die "unexpected model or effort in $1's record"
+  agent_args "$kind" "$model" "$effort"
+  ssh_turn "$1" "$cwd" "$2" "$kind" "$session" "${args[@]}"
+  echo '{"status":"working"}'
+}
+
+ssh_kill() {
+  remote '
+w='"$ROOT"'/delegate/$1/.worker
+stage=kill
+if [ ! -e "$w/exit" ] && kill -0 "$(cat "$w/pid" 2>/dev/null)" 2>/dev/null; then
+  kill -- "-$(cat "$w/pid")"
+fi
+' "$1"
+}
+
+# --- commands ---
+
+# Sets args to the flags a $1 worker runs with in every backend.
+agent_args() {
+  case $1 in
+    claude) args=(--permission-mode auto --model "$2" --effort "$3") ;;
+    codex) args=(--approve-for-me -m "$2" -c "model_reasoning_effort=$3") ;;
+    *) usage ;;
+  esac
+}
+
+# The backend in task record $1; tasks from before backends were recorded ran on Rex.
+# The record lives where the worker can write, so its value picks a function
+# only from this list.
+backend() {
+  local b
+  b=$(jq -r '.backend // "rex"' <<<"$1")
+  case $b in
+    rex | hc | ssh) echo "$b" ;;
+    *) die "unknown backend $b" ;;
+  esac
 }
 
 cmd_start() {
@@ -74,28 +347,36 @@ cmd_start() {
   [ -f "$brief/brief.md" ] || die "$brief/brief.md not found"
 
   local args
-  case $kind in
-    claude) args=(--permission-mode auto --model "$model" --effort "$effort") ;;
-    codex) args=(--approve-for-me -m "$model" -c "model_reasoning_effort=$effort") ;;
-    *) usage ;;
-  esac
+  agent_args "$kind" "$model" "$effort"
 
-  local base_sha=''
+  # The worker goes where the coordinator's terminal looks: Herdr, Rex, or
+  # neither, which leaves a headless run that only this script follows.
+  local backend=ssh
+  if [ -n "${HC_TERMINAL_SOCKET:-}" ]; then
+    backend=hc
+  elif [ -n "${REX_SESSION:-}" ]; then
+    backend=rex
+  fi
+
+  local base_sha='' cwd=$ROOT/delegate/$task
   if [ -n "$repo" ]; then
     repo=$(git -C "$repo" rev-parse --show-toplevel)
     clone=${clone:-$ROOT/$(basename "$(git -C "$repo" remote get-url origin)" .git)}
+    cwd=$clone
   fi
   if [ -n "$branch" ]; then
     base_sha=$(git -C "$repo" rev-parse --verify "$base^{commit}")
     git -C "$repo" push -q --no-verify "$HOST:$clone" "$base_sha:refs/delegate/$task"
+    cwd=$clone.$task
   fi
 
   local meta
   meta=$(jq -nc --arg repo "$repo" --arg clone "$clone" --arg branch "$branch" --arg base "$base_sha" \
-    '{repo: $repo, clone: $clone, branch: $branch, base: $base}')
+    --arg backend "$backend" --arg kind "$kind" --arg model "$model" --arg effort "$effort" --arg cwd "$cwd" \
+    '{repo: $repo, clone: $clone, branch: $branch, base: $base,
+      backend: $backend, kind: $kind, model: $model, effort: $effort, cwd: $cwd}')
 
-  local cwd
-  cwd=$(COPYFILE_DISABLE=1 tar --no-xattrs -C "$brief" -cf - . | remote '
+  COPYFILE_DISABLE=1 tar --no-xattrs -C "$brief" -cf - . | remote '
 task=$1 clone=$2 branch=$3 kind=$4 meta=$5
 mb='"$ROOT"'/delegate/$task
 stage=check
@@ -118,53 +399,40 @@ printf "%s\n" "$meta" >"$mb/.task.json"
 if [ -n "$branch" ]; then
   stage="worktree add"
   git -C "$clone" worktree add -q -b "$branch" "$clone.$task" "refs/delegate/$task"
-  echo "$clone.$task"
-else
-  echo "${clone:-$mb}"
 fi
-' "$task" "$clone" "$branch" "$kind" "$meta")
+' "$task" "$clone" "$branch" "$kind" "$meta"
 
-  rx new "$task" -c "$cwd" -- "$kind" "${args[@]}" \
-    "Read $ROOT/delegate/$task/brief.md and follow it. Reply DONE when REPORT.md is written." >/dev/null ||
-    die "failed at rex new"
-  # Claude reports idle before it takes up the prompt, so idle doesn't count as
-  # started. Startup hooks hold a new agent briefly; a trust prompt holds it
-  # until the timeout.
-  await "$task" 30 working,blocked,done,error | jq -c --arg cwd "$cwd" '{cwd: $cwd} + .'
+  "${backend}_launch" "$task" "$cwd" \
+    "Read $ROOT/delegate/$task/brief.md and follow it. Reply DONE when REPORT.md is written." \
+    "$kind" "${args[@]}" |
+    jq -c --arg cwd "$cwd" --arg backend "$backend" '{cwd: $cwd, backend: $backend} + .'
 }
 
-# The cloudflared tunnel under the Rex forward drops now and then while the
-# worker keeps running, so retry until the deadline.
 cmd_wait() {
   [ $# -eq 2 ] || usage
-  local left
-  while :; do
-    left=$((($2 - SECONDS * 1000) / 1000))
-    [ "$left" -gt 0 ] || die "timed out waiting for $1"
-    await "$1" "$left" idle,done,blocked,error && return
-    if rx ls >/dev/null 2>&1 && ! rx session inspect "$1" >/dev/null 2>&1; then
-      die "no Rex session $1 on $HOST"
-    fi
-    echo "delegate: Rex on $HOST unreachable, retrying" >&2
-    sleep 5
-  done
+  local b
+  b=$(backend "$(meta "$1")")
+  "${b}_wait" "$1" $(($2 / 1000))
 }
 
 cmd_read() {
   [ $# -eq 1 ] || usage
-  rx capture -s "$1" --trim --unwrap | tail -n 120
+  local b
+  b=$(backend "$(meta "$1")")
+  "${b}_read" "$1"
 }
 
 cmd_followup() {
   [ $# -eq 2 ] || usage
-  local name
+  local name m b
   name=$(basename "$2")
   [[ $name =~ ^review-[0-9]+\.md$ ]] || die "review file must be named review-<n>.md"
+  m=$(meta "$1")
+  b=$(backend "$m")
 
   remote 'stage=ship; test -d '"$ROOT"'/delegate/"$1"; cat >'"$ROOT"'/delegate/"$1/$2"' "$1" "$name" <"$2"
-  rx send -s "$1" "Read $ROOT/delegate/$1/$name and address it. Update REPORT.md, then reply DONE."
-  rx send-key -s "$1" enter
-  await "$1" 30 working,blocked
+  "${b}_send" "$1" \
+    "Read $ROOT/delegate/$1/$name and address it. Update REPORT.md, then reply DONE." "$m"
 }
 
 cmd_collect() {
@@ -189,7 +457,9 @@ cmd_collect() {
 
 cmd_clean() {
   [ $# -eq 1 ] || usage
-  rx kill "$1" >/dev/null 2>&1 || echo "no Rex session $1 on $HOST"
+  local b
+  b=$(backend "$(meta "$1")")
+  "${b}_kill" "$1"
   remote '
 meta='"$ROOT"'/delegate/$1/.task.json
 clone=$(jq -r .clone "$meta")
