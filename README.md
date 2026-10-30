@@ -106,7 +106,7 @@ npx @vectorize-io/hindsight-coding-agents install codex --server self-hosted --a
 
 ## Stack
 
-- Terminal: [Ghostty](https://ghostty.org/), [Rex](https://www.superlogical.com/rex)
+- Terminal: [Ghostty](https://ghostty.org/), [Herdr](https://herdr.dev/), [Rex](https://www.superlogical.com/rex)
 - Shell: zsh
 - Editor: vim
 - Prompt: [Starship](https://starship.rs/)

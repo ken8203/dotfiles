@@ -156,9 +156,38 @@ EOF
   return 1
 }
 
-# Wake an Outpost instance and bring its Rex server back within reach.
-# The forward can't open a browser for Cloudflare Access, so an expired token
-# keeps it down until the login happens here.
+# Make an Outpost instance the Herdr machine of the same name. hc installs itself
+# in ~/.local/bin there, on the data disk, and like Rex its terminals start in
+# the image's bash, so hand them to zsh too.
+# Usage: outpost-hc [host]
+outpost-hc() {
+  emulate -L zsh
+  local host=${1:-outpost} machine i
+  machine=$(herdr-core machine ls --json | jq -c --arg h "$host" '.machines[] | select(.name == $h)') || return 1
+  if [[ -z $machine ]]; then
+    herdr-core machine add "$host" --install >/dev/null || return 1
+  elif [[ $(jq -r .version <<<"$machine") != $(herdr-core --version | awk '{ print $2 }') ]]; then
+    herdr-core machine update "$host" >/dev/null || return 1
+  fi
+
+  ssh "$host" 'grep -qs HC_TERMINAL_ID ~/.bashrc || cat >>~/.bashrc' <<'RC' || return 1
+
+# Herdr starts terminals in the passwd shell, which every new Outpost instance resets to bash.
+[[ $- == *i* && -n ${HC_TERMINAL_ID:-} ]] && exec zsh -l
+RC
+
+  for i in {1..30}; do
+    [[ $(herdr-core machine ls --json | jq -r --arg h "$host" '.machines[] | select(.name == $h) | .state') == connected ]] && return
+    sleep 1
+  done
+  echo "Herdr can't reach $host: $(herdr-core machine ls --json | jq -r --arg h "$host" '.machines[] | select(.name == $h) | .state')" >&2
+  return 1
+}
+
+# Wake an Outpost instance and bring it within reach of the terminal this runs
+# in: the Herdr machine in Herdr, the Rex server in Rex, and plain ssh elsewhere.
+# The Rex forward can't open a browser for Cloudflare Access, so an expired
+# token keeps it down until the login happens here.
 # Usage: outpost-up [name]
 outpost-up() {
   emulate -L zsh
@@ -172,7 +201,13 @@ outpost-up() {
   if ! outpost status $name | grep -q '^Status *running$'; then
     outpost claim $name --instance-type e6-standard-8 || return 1
   fi
-  outpost-rex "$host" || return 1
+  if [[ -n ${HC_TERMINAL_SOCKET:-} ]]; then
+    outpost-hc "$host" || return 1
+  elif [[ -n ${REX_SESSION:-} ]]; then
+    outpost-rex "$host" || return 1
+  else
+    ssh "$host" true || return 1
+  fi
   echo "$host ready"
 }
 
