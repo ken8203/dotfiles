@@ -22,7 +22,11 @@
 - 測試只跑跟改動相關的範圍，不要跑 full suite
 - PR scope 之外的問題開 issue 記錄，不要順手修
 - Debug 先查證據（Sentry／PostHog／logs）找 root cause；結論要有數據支持，不要純推論
-- 發 PR 前自行判斷要不要跑 `/simplify`（沒有才改用 `/simplify-review`）：有實質 code 改動就跑，純文件或瑣碎修改可略過
+- 發 PR 前的流程是 `/rethink` → `/simplify`／`/code-review`／`/security-review`，每一步都依任務性質與難易度自行決定要不要跑：
+  - `/rethink`：設計有取捨、或改動有一定規模時跑。另開全新 context 的 subagent 跑，讓它不帶實作過程的思路重新想做法；提案交給我挑，照我選的改完再往下
+  - `/simplify`（沒有才改用 `/simplify-review`）：有實質 code 改動時跑
+  - `/code-review`：邏輯複雜、容易藏 bug 時跑
+  - `/security-review`：碰到 auth、權限、外部輸入或 secret 時跑
 - PR description 要寫清楚 Motivation 與解決了什麼問題
 
 ## Outpost 分工
