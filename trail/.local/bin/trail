@@ -90,6 +90,14 @@ pr_info() {
   fi
 }
 
+typeset -A pr_rows
+
+# pr_row url: pr_info into REPLY, reading each PR's cache once per view.
+pr_row() {
+  (( ${+pr_rows[$1]} )) || pr_rows[$1]=$(pr_info $1)
+  REPLY=$pr_rows[$1]
+}
+
 # --- trail files ----------------------------------------------------------------
 #
 # # name
@@ -251,7 +259,8 @@ key_of() { (( $#view_targets <= 9 )) && print -r -- $#view_targets || print ' ' 
 pr_line() {
   local url=$1 width=$2 marker=$3 ref_width=$4 indent=$5 hint=$6
   local number state draft ci review base head title
-  IFS=$'\t\t' read -r number state draft ci review base head title <<<"$(pr_info $url)"
+  pr_row $url
+  IFS=$'\t\t' read -r number state draft ci review base head title <<<$REPLY
   title=$(clean $title)
   local label=$STATE_LABEL[$state] color=$STATE_COLOR[$state]
   [[ $state == OPEN && $draft == true ]] && { label=draft; color=2 }
@@ -277,7 +286,7 @@ pr_line() {
 # on: a PR URL to open, or step:<n> to tick.
 view() {
   local target=$1 width=${2:-0} name=$(pane_trail $1)
-  view_lines=() view_targets=()
+  view_lines=() view_targets=() pr_rows=()
   local -a pane_list=( ${(f)"$(pane_urls $target)"} ) untracked=()
   local number state draft ci review base head title url
 
@@ -291,7 +300,8 @@ view() {
     for (( i = 1; i <= $#kinds; i++ )); do
       finished[i]=$ticks[i]
       if [[ $kinds[i] == pr ]]; then
-        IFS=$'\t\t' read -r number state draft ci review base head title <<<"$(pr_info $values[i])"
+        pr_row $values[i]
+        IFS=$'\t\t' read -r number state draft ci review base head title <<<$REPLY
         state_of[$values[i]]=$state
         head_of[${${values[i]#https://github.com/}%/pull/*}:$head]=$values[i]
         [[ $state == (MERGED|CLOSED) ]] && finished[i]=1 || finished[i]=0
@@ -316,7 +326,8 @@ view() {
       fi
       url=$values[i]
       local indent='' hint=''
-      IFS=$'\t\t' read -r number state draft ci review base head title <<<"$(pr_info $url)"
+      pr_row $url
+      IFS=$'\t\t' read -r number state draft ci review base head title <<<$REPLY
       local parent=${head_of[${${url#https://github.com/}%/pull/*}:$base]:-}
       if [[ -n $parent && $parent != $url ]]; then
         indent='└ '
@@ -360,12 +371,17 @@ watched_urls() {
 }
 
 watch() {
-  local target=$1 key force= size top=0 fetched=-$ttl_seconds
+  local target=$1 key force= size= clock= top=0 stale=1 fetched=-$ttl_seconds
   local title=$(pane_title $target)
-  draw() {
+  # compose reads the trail and PR caches into view_lines; paint only lays them out, so
+  # scrolling stays cheap.
+  compose() {
     size=$(stty size)
     LINES=${size% *} COLUMNS=${size#* }
     view $target $COLUMNS
+    clock=$(date +%H:%M)
+  }
+  paint() {
     # Heading, a blank, the body and the footer must fit in LINES, or the frame scrolls.
     local room=$(( LINES > 7 ? LINES - 4 : 3 )) total=$#view_lines
     local max=$(( total > room ? total - room : 0 ))
@@ -373,12 +389,11 @@ watch() {
     (( top < 0 )) && top=0
     local footer='1-9 open PR / tick step · e edit · r refresh · q close'
     (( total > room )) && footer="$(( top + 1 ))-$(( top + room ))/$total · j/k scroll · $footer"
-    print -n $'\e[H\e[2J'
-    local heading="${title:-this pane}"
-    dim "${heading[1,COLUMNS-8]} · $(date +%H:%M)"
-    print '\n'
-    print -rl -- "${(@)view_lines[top+1,top+room]}" ''
-    dim $footer
+    local heading="${title:-this pane}" line
+    # One write that overwrites in place: clearing first makes the panel flicker.
+    local frame=$'\e[H\e[2m'"${heading[1,COLUMNS-8]} · $clock"$'\e[0m\e[K\n\e[K\n'
+    for line in "${(@)view_lines[top+1,top+room]}"; do frame+=$line$'\e[K\n'; done
+    print -rn -- "$frame"$'\e[K\n\e[2m'"$footer"$'\e[0m\e[J'
   }
   # Alternate screen keeps old frames out of scrollback; no autowrap clips long lines; 1007 turns
   # the mouse wheel into arrow keys. Echo stays off between reads too, so input that lands
@@ -389,18 +404,24 @@ watch() {
   # The function's locals are gone when its EXIT trap runs, so expand $tty now.
   trap "stty ${(q)tty}; print -n '\e[?1007l\e[?25h\e[?7h\e[?1049l'" EXIT
   while :; do
-    draw
+    (( stale )) && compose
+    paint
+    stale=0
     if [[ -n $force ]] || (( SECONDS - fetched >= ttl_seconds )); then
       refresh $force ${(f)"$(watched_urls $target)"}
       fetched=$SECONDS force=
-      draw
+      compose
+      paint
     fi
     # Poll each second so a resize redraws; skip keys the panel doesn't use without redrawing.
     key=
     while :; do
       if read -s -t 1 -k 1 key; then
         [[ $key == [qrejk1-9$'\e'] ]] && break
-      elif [[ $(stty size) != $size ]] || (( SECONDS - fetched >= ttl_seconds )); then
+      elif [[ $(stty size) != $size ]]; then
+        stale=1
+        break
+      elif (( SECONDS - fetched >= ttl_seconds )); then
         break
       fi
       key=
@@ -423,12 +444,14 @@ watch() {
         print -n $'\e[?25h'
         ${EDITOR:-vi} $(trail_file $name)
         print -n $'\e[?25l'
+        stale=1
         ;;
       [1-9])
         (( key <= $#view_targets )) || continue
         local picked=$view_targets[key]
         if [[ $picked == step:* ]]; then
           tick $(pane_trail $target) ${picked#step:}
+          stale=1
         else
           open $picked
         fi
