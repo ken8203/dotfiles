@@ -1,4 +1,5 @@
 *.local
+!trail/.local/
 
 # App-managed state, regenerated on launch
 revdiff/.config/revdiff/themes/

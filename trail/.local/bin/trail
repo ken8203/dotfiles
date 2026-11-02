@@ -1,0 +1,529 @@
+#!/bin/zsh
+# Where each chain of work stands. A trail is an ordered checklist of PRs and free-text
+# steps (releases, flags, rollouts) that every Rex pane working on it shares. pr-shim,
+# linked as gh and git, records the PRs each pane touches.
+#
+#   trail                      this pane's trail and the PRs it touched
+#   trail ls                   every trail with its progress and next step
+#   trail use <name>           attach this pane to a trail, creating it if needed
+#   trail add <step>...        append steps: owner/repo#n, a PR URL, or free text
+#   trail done <n>             tick (or untick) free-text step n
+#   trail note <text>          append a note
+#   trail edit [name]          open a trail in $EDITOR
+#   trail watch [block]        keep a pane's view on screen (the Rex panel)
+#   trail statusline           Claude Code statusline segment
+#   trail record [--own] [-C dir] [-R repo] [pr]   remember a PR (pr-shim calls this)
+
+setopt extended_glob no_unset pipe_fail typeset_silent
+
+export TRAIL_PASSTHROUGH=1
+self=$0
+state_dir=${XDG_STATE_HOME:-$HOME/.local/state}/trail
+trails_dir=$state_dir/trails
+panes_dir=$state_dir/panes
+cache_dir=${XDG_CACHE_HOME:-$HOME/.cache}/trail
+ttl_seconds=60
+pane=${REX_BLOCK:-}
+
+readonly NAME_PATTERN='[A-Za-z0-9._-]##'
+readonly REF_PATTERN='[A-Za-z0-9_.-]##/[A-Za-z0-9_.-]##\#<->'
+readonly URL_PATTERN='https://github.com/[A-Za-z0-9_.-]##/[A-Za-z0-9_.-]##/pull/<->'
+readonly CI_JQ='
+  (.statusCheckRollup // []) as $checks
+  | if ($checks | length) == 0 then "none"
+    elif any($checks[]; (.conclusion // .state) as $s
+      | ["FAILURE","ERROR","TIMED_OUT","CANCELLED","ACTION_REQUIRED","STARTUP_FAILURE"] | index($s)) then "fail"
+    elif any($checks[]; (.__typename == "CheckRun" and .status != "COMPLETED") or .state == "PENDING" or .state == "EXPECTED") then "pending"
+    else "pass" end'
+
+die() { print -u2 -r -- "trail: $*"; exit 1 }
+need_pane() { [[ -n $pane ]] || die "not in a Rex pane" }
+
+# Text from GitHub or trail files reaches the terminal, so control characters go.
+clean() { print -r -- ${${1-}//[[:cntrl:]]/} }
+dim() { print -rn -- $'\e[2m'"$1"$'\e[0m' }
+
+ref_of() { local rest=${1#https://github.com/}; print -r -- "${rest%/pull/*}#${rest##*/}" }
+url_of() { print -r -- "https://github.com/${1%\#*}/pull/${1##*\#}" }
+short_ref() { print -r -- ${1#*/} }
+
+trail_file() { print -r -- $trails_dir/$1.md }
+pane_prs_file() { print -r -- $panes_dir/${1#block:}.prs }
+pane_trail_file() { print -r -- $panes_dir/${1#block:}.trail }
+pane_trail() { local file=$(pane_trail_file $1); [[ -f $file ]] && print -r -- "$(<$file)" }
+pane_urls() { local file=$(pane_prs_file $1); [[ -f $file ]] && print -rl -- ${(f)"$(<$file)"} }
+
+# --- GitHub state -------------------------------------------------------------
+
+cache_of() { print -r -- $cache_dir/${${1#https://github.com/}//\//-}.json }
+is_fresh() { local -a hit=( $1(N.ms-$ttl_seconds) ); (( $#hit )) }
+
+fetch() {
+  local file=$(cache_of $1) tmp
+  mkdir -p $cache_dir
+  tmp=$(mktemp $cache_dir/.fetch.XXXXXX) || return
+  if gh pr view $1 --json number,state,isDraft,reviewDecision,statusCheckRollup,title,baseRefName,headRefName >$tmp; then
+    mv $tmp $file
+  else
+    rm -f $tmp
+  fi
+}
+
+# refresh [-f] url...: fetch stale PRs (all of them with -f) in parallel.
+refresh() {
+  local force=0 url
+  [[ ${1:-} == -f ]] && { force=1; shift }
+  for url; do
+    (( force )) || ! is_fresh $(cache_of $url) || continue
+    fetch $url &
+  done
+  wait
+}
+
+# pr_info url: number, state, draft, ci, review, base, head, title, tab-separated.
+pr_info() {
+  local file=$(cache_of $1)
+  if [[ -f $file ]]; then
+    jq -r "[.number, .state, .isDraft, ($CI_JQ), .reviewDecision // \"\", .baseRefName, .headRefName, .title] | @tsv" $file
+  else
+    print -r -- "${1##*/}	UNKNOWN	false	none				"
+  fi
+}
+
+# --- trail files ----------------------------------------------------------------
+#
+# # name
+#
+# - [ ] owner/repo#123        PR step: done once GitHub says merged or closed
+# - [ ] release api 5.7       free-text step: ticked by hand
+#
+# ## Notes
+#
+# - 11-02 free text
+
+create_trail() {
+  [[ $1 == $~NAME_PATTERN ]] || die "trail names use letters, digits, '.', '_' and '-'"
+  local file=$(trail_file $1)
+  [[ -f $file ]] && return
+  mkdir -p $trails_dir
+  print -r -- "# $1"$'\n\n'"## Notes" >$file
+}
+
+# steps name: kind, ticked, value (URL for PR steps, text otherwise), tab-separated.
+steps() {
+  local file=$(trail_file $1) line text ref
+  [[ -f $file ]] || return 0
+  while IFS= read -r line; do
+    [[ $line == '## Notes'* ]] && break
+    [[ $line == (#b)'- ['([ xX])'] '(*) ]] || continue
+    text=$match[2]
+    ref=${(M)text##$~REF_PATTERN}
+    if [[ -n $ref ]]; then
+      print -r -- "pr	0	$(url_of $ref)"
+    else
+      print -r -- "text	${${${match[1]:# }:+1}:-0}	$text"
+    fi
+  done <$file
+}
+
+notes() {
+  local file=$(trail_file $1) line
+  [[ -f $file ]] || return 0
+  local content=$(<$file)
+  [[ $content == *$'\n## Notes'* ]] || return 0
+  for line in "${(@f)${content#*$'\n'\#\# Notes}}"; do
+    [[ -n ${line//[[:space:]]/} ]] && clean $line
+  done
+}
+
+trail_urls() { steps $1 | awk -F'\t' '$1 == "pr" { print $3 }' }
+
+trails_with() {
+  local file
+  for file in $trails_dir/*.md(N); do
+    trail_urls ${file:t:r} | grep -qxF -- $1 && print -r -- ${file:t:r}
+  done
+}
+
+# add_steps name step...: inserts after the last step, ahead of the notes.
+add_steps() {
+  local name=$1 file=$(trail_file $1) step line i insert_at=0 notes_at=0
+  shift
+  create_trail $name
+  local -a lines=( "${(@f)$(<$file)}" ) new=()
+  for step; do
+    step=$(clean $step)
+    [[ $step == $~URL_PATTERN* ]] && step=$(ref_of ${(M)step##$~URL_PATTERN})
+    [[ -n $step ]] && new+=("- [ ] $step")
+  done
+  for (( i = 1; i <= $#lines; i++ )); do
+    [[ $lines[i] == '## Notes'* ]] && { notes_at=$i; break }
+    [[ $lines[i] == '- ['[\ xX]'] '* ]] && insert_at=$i
+  done
+  if (( insert_at )); then
+    lines[insert_at]=( "$lines[insert_at]" "${new[@]}" )
+  elif (( notes_at )); then
+    lines=( "$lines[1]" '' "${new[@]}" '' "${(@)lines[notes_at,-1]}" )
+  else
+    lines+=( '' "${new[@]}" )
+  fi
+  print -rl -- "${lines[@]}" >$file
+}
+
+tick() {
+  local file=$(trail_file $1) target=$2 i n=0
+  local -a lines=( "${(@f)$(<$file)}" )
+  for (( i = 1; i <= $#lines; i++ )); do
+    [[ $lines[i] == '## Notes'* ]] && break
+    [[ $lines[i] == (#b)'- ['([ xX])'] '(*) ]] || continue
+    (( ++n == target )) || continue
+    [[ $match[2] == $~REF_PATTERN* ]] && die "step $target is a PR; it ticks itself once merged"
+    [[ $match[1] == ' ' ]] && lines[i]="- [x] $match[2]" || lines[i]="- [ ] $match[2]"
+    print -rl -- "${lines[@]}" >$file
+    return
+  done
+  die "no step $target"
+}
+
+bind() {
+  create_trail $2
+  mkdir -p $panes_dir
+  print -r -- $2 >$(pane_trail_file $1)
+}
+
+record() {
+  local own=0
+  [[ ${1:-} == --own ]] && { own=1; shift }
+  local -a dir repo
+  zparseopts -D -E -- C:=dir R:=repo
+  local url=${(M)${1:-}##$~URL_PATTERN}
+  if [[ -z $url ]]; then
+    url=$(cd ${dir[2]:-.} && gh pr view ${1:-} ${repo:+-R} ${repo[2]:-} --json url -q .url 2>/dev/null) || return 0
+    [[ $url == $~URL_PATTERN ]] || return 0
+  fi
+  fetch $url
+  [[ -f $(cache_of $url) ]] || return 0
+  mkdir -p $panes_dir
+  pane_urls $pane | grep -qxF -- $url || print -r -- $url >>$(pane_prs_file $pane)
+
+  local current=$(pane_trail $pane) found=( ${(f)"$(trails_with $url)"} )
+  if [[ -z $current ]]; then
+    (( $#found )) && bind $pane $found[1]
+  elif (( own && ! $#found )); then
+    add_steps $current $(ref_of $url)
+  fi
+}
+
+# --- views ----------------------------------------------------------------------
+
+typeset -a view_lines view_targets
+typeset -A pane_titles
+
+pane_title() {
+  [[ -n ${pane_titles[$1]+set} ]] && { print -r -- $pane_titles[$1]; return }
+  local title=$(rex block call -s ${REX_SESSION:-} -b $1 title '{}' 2>/dev/null | jq -r '.title // empty')
+  pane_titles[$1]=$(clean $title)
+  print -r -- $pane_titles[$1]
+}
+
+# owners url target: titles of the other live panes that touched a PR.
+owners() {
+  local url=$1 target=$2 file block title
+  local -a names=()
+  for file in $panes_dir/*.prs(N); do
+    block=block:${file:t:r}
+    [[ $block == $target ]] && continue
+    grep -qxF -- $url $file || continue
+    title=$(pane_title $block)
+    [[ -n $title ]] && names+=(${title[1,24]})
+  done
+  print -r -- ${(j:, :)names}
+}
+
+typeset -A CI_MARK=(pass $'\e[32m✓\e[0m' fail $'\e[31m✗\e[0m' pending $'\e[33m●\e[0m' none ' ')
+typeset -A STATE_LABEL=(OPEN open MERGED merged CLOSED closed UNKNOWN '…')
+typeset -A STATE_COLOR=(OPEN 32 MERGED 35 CLOSED 31 UNKNOWN 2)
+
+# key_of: the number key for the target just added, blank past nine.
+key_of() { (( $#view_targets <= 9 )) && print -r -- $#view_targets || print ' ' }
+
+# pr_line url width marker ref_width indent hint: one PR row.
+pr_line() {
+  local url=$1 width=$2 marker=$3 ref_width=$4 indent=$5 hint=$6
+  local number state draft ci review base head title
+  IFS=$'\t\t' read -r number state draft ci review base head title <<<"$(pr_info $url)"
+  title=$(clean $title)
+  local label=$STATE_LABEL[$state] color=$STATE_COLOR[$state]
+  [[ $state == OPEN && $draft == true ]] && { label=draft; color=2 }
+  local -a notes=( ${hint:+$hint} )
+  [[ $review == APPROVED ]] && notes+=(approved)
+  [[ $review == CHANGES_REQUESTED ]] && notes+=('changes requested')
+  [[ $state == OPEN && $ci == fail ]] && notes+=('CI failing')
+  hint=${(j: · :)notes}
+  local ref=$indent$(short_ref $(ref_of $url))
+  view_targets+=($url)
+  if (( width )); then
+    local rest=$(( width - ref_width - 21 - ${#hint} - (${#hint} ? 3 : 0) ))
+    (( rest < 12 )) && rest=12
+    (( ${#title} > rest )) && title="${title[1,rest-1]}…"
+  fi
+  # OSC 8 links the ref; its padding is added outside the escape sequence.
+  view_lines+=("$(printf ' %s %s %s \e]8;;%s\e\\%s\e]8;;\e\\%*s \e[%sm%-6s\e[0m %s' \
+    "$(dim "$(key_of)")" "$marker" "${CI_MARK[$ci]:- }" $url $ref $(( ref_width - ${#ref} )) '' \
+    $color $label $title)${hint:+  $(dim $hint)}")
+}
+
+# view block width: fills view_lines, and view_targets with what each number key acts
+# on: a PR URL to open, or step:<n> to tick.
+view() {
+  local target=$1 width=${2:-0} name=$(pane_trail $1)
+  view_lines=() view_targets=()
+  local -a pane_list=( ${(f)"$(pane_urls $target)"} ) untracked=()
+  local number state draft ci review base head title url
+
+  if [[ -n $name ]]; then
+    local -a kinds ticks values finished
+    local -A head_of state_of
+    local kind tick value i next=0 done_count=0 ref_width=0 ref
+    while IFS=$'\t\t' read -r kind tick value; do
+      kinds+=($kind) ticks+=($tick) values+=($value)
+    done < <(steps $name)
+    for (( i = 1; i <= $#kinds; i++ )); do
+      finished[i]=$ticks[i]
+      if [[ $kinds[i] == pr ]]; then
+        IFS=$'\t\t' read -r number state draft ci review base head title <<<"$(pr_info $values[i])"
+        state_of[$values[i]]=$state
+        head_of[${${values[i]#https://github.com/}%/pull/*}:$head]=$values[i]
+        [[ $state == (MERGED|CLOSED) ]] && finished[i]=1 || finished[i]=0
+        ref=$(short_ref $(ref_of $values[i]))
+        (( ${#ref} + 2 > ref_width )) && ref_width=$(( ${#ref} + 2 ))
+      fi
+      (( finished[i] )) && (( ++done_count )) || { (( next )) || next=$i }
+    done
+
+    view_lines+=($'\e[1m'"$name"$'\e[0m'"  $(dim "$done_count/$#kinds done")" '')
+    for (( i = 1; i <= $#kinds; i++ )); do
+      local marker=' '
+      (( i == next )) && marker=$'\e[1;36m▶\e[0m'
+      if [[ $kinds[i] == text ]]; then
+        view_targets+=(step:$i)
+        if (( finished[i] )); then
+          view_lines+=(" $(dim "$(key_of)") $marker $(dim "✓ $(clean $values[i])")")
+        else
+          view_lines+=(" $(dim "$(key_of)") $marker ☐ $(clean $values[i])")
+        fi
+        continue
+      fi
+      url=$values[i]
+      local indent='' hint=''
+      IFS=$'\t\t' read -r number state draft ci review base head title <<<"$(pr_info $url)"
+      local parent=${head_of[${${url#https://github.com/}%/pull/*}:$base]:-}
+      if [[ -n $parent && $parent != $url ]]; then
+        indent='└ '
+        [[ $state == OPEN && $state_of[$parent] == MERGED ]] && hint='base merged, retarget'
+      fi
+      if (( ${pane_list[(Ie)$url]} )); then
+        hint="${hint:+$hint · }this pane"
+      else
+        local others=$(owners $url $target)
+        [[ -n $others ]] && hint="${hint:+$hint · }$others"
+      fi
+      pr_line $url $width $marker $ref_width "$indent" "$hint"
+    done
+
+    local -a note_lines=( ${(f)"$(notes $name)"} )
+    if (( $#note_lines )); then
+      view_lines+=('' $'\e[1mNotes\e[0m')
+      local note
+      for note in $note_lines; do view_lines+=("  $note"); done
+    fi
+    for url in $pane_list; do (( ${values[(Ie)$url]} )) || untracked+=($url); done
+  else
+    untracked=( $pane_list )
+  fi
+
+  if (( $#untracked )); then
+    view_lines+=('' $'\e[1m'"${name:+Other }PRs touched in this pane"$'\e[0m')
+    local ref_width=0 ref
+    for url in $untracked; do
+      ref=$(short_ref $(ref_of $url))
+      (( ${#ref} > ref_width )) && ref_width=${#ref}
+    done
+    for url in $untracked; do pr_line $url $width ' ' $ref_width '' ''; done
+  fi
+  [[ -n $name ]] || view_lines+=('' "$(dim 'No trail yet. `trail use <name>` starts one for this pane.')")
+}
+
+watched_urls() {
+  local name=$(pane_trail $1)
+  { pane_urls $1; [[ -n $name ]] && trail_urls $name } | sort -u
+}
+
+watch() {
+  local target=$1 key force=
+  local title=$(pane_title $target)
+  draw() {
+    view $target $COLUMNS
+    print -n $'\e[H\e[2J'
+    local heading="${title:-this pane}"
+    dim "${heading[1,COLUMNS-8]} · $(date +%H:%M)"
+    print '\n'
+    print -rl -- "${view_lines[@]}" ''
+    dim '1-9 open PR / tick step · e edit · r refresh · q close'
+  }
+  TRAPWINCH() { draw }
+  print -n $'\e[?25l'
+  trap 'print -n "\e[?25h"' EXIT
+  while :; do
+    draw
+    refresh $force ${(f)"$(watched_urls $target)"}
+    draw
+    force=
+    read -s -t 30 -k 1 key || continue
+    case $key in
+      q) break ;;
+      r) force=-f ;;
+      e)
+        local name=$(pane_trail $target)
+        [[ -n $name ]] || continue
+        print -n $'\e[?25h'
+        ${EDITOR:-vi} $(trail_file $name)
+        print -n $'\e[?25l'
+        ;;
+      [1-9])
+        (( key <= $#view_targets )) || continue
+        local picked=$view_targets[key]
+        if [[ $picked == step:* ]]; then
+          tick $(pane_trail $target) ${picked#step:}
+        else
+          open $picked
+        fi
+        ;;
+    esac
+  done
+}
+
+statusline() {
+  [[ -n $pane ]] || return 0
+  local -a urls=( ${(f)"$(watched_urls $pane)"} )
+  local name=$(pane_trail $pane) url stale=0
+  for url in $urls; do is_fresh $(cache_of $url) || stale=1; done
+  if (( stale )); then
+    local lock=$cache_dir/.lock-${pane#block:}
+    mkdir -p $cache_dir
+    local -a old_lock=( $lock(N/mm+5) )
+    (( $#old_lock )) && rmdir $lock
+    mkdir $lock 2>/dev/null && { { refresh $urls; rmdir $lock } </dev/null >/dev/null 2>&1 &! }
+  fi
+
+  if [[ -n $name ]]; then
+    local kind tick value total=0 finished=0 next=''
+    while IFS=$'\t' read -r kind tick value; do
+      (( ++total ))
+      if [[ $kind == pr ]]; then
+        local number state draft ci review base head title
+        IFS=$'\t\t' read -r number state draft ci review base head title <<<"$(pr_info $value)"
+        [[ $state == (MERGED|CLOSED) ]] && { (( ++finished )); continue }
+        [[ -z $next ]] && next="$(short_ref $(ref_of $value))${CI_MARK[$ci]:+ $CI_MARK[$ci]}"
+      else
+        (( tick )) && { (( ++finished )); continue }
+        [[ -z $next ]] && next=$(clean ${value[1,32]})
+      fi
+    done < <(steps $name)
+    print -rn -- "$name $finished/$total${next:+ · ▶ $next}"
+    return
+  fi
+
+  local -a segments=()
+  for url in $(pane_urls $pane); do
+    local number state draft ci review base head title
+    IFS=$'\t\t' read -r number state draft ci review base head title <<<"$(pr_info $url)"
+    [[ $state == (MERGED|CLOSED) ]] && continue
+    segments+=("#$number${CI_MARK[$ci]:+ $CI_MARK[$ci]}")
+  done
+  (( $#segments )) && print -rn -- "PR ${(j: · :)segments}"
+}
+
+list_trails() {
+  local file name kind tick value
+  local -a files=( $trails_dir/*.md(Nom) )
+  (( $#files )) || { print "No trails yet. \`trail use <name>\` starts one."; return }
+  local -a all_urls=()
+  for file in $files; do all_urls+=( ${(f)"$(trail_urls ${file:t:r})"} ); done
+  refresh $all_urls
+  for file in $files; do
+    name=${file:t:r}
+    local total=0 finished=0 next=''
+    while IFS=$'\t' read -r kind tick value; do
+      (( ++total ))
+      if [[ $kind == pr ]]; then
+        local number state draft ci review base head title
+        IFS=$'\t\t' read -r number state draft ci review base head title <<<"$(pr_info $value)"
+        [[ $state == (MERGED|CLOSED) ]] && { (( ++finished )); continue }
+        [[ -z $next ]] && next="$(short_ref $(ref_of $value)) $(clean $title)"
+      else
+        (( tick )) && { (( ++finished )); continue }
+        [[ -z $next ]] && next=$(clean $value)
+      fi
+    done < <(steps $name)
+    local -a pane_files=( $panes_dir/*.trail(N) ) attached=()
+    (( $#pane_files )) && attached=( ${(f)"$(grep -lxF -- $name $pane_files)"} )
+    printf '\e[1m%-24s\e[0m %5s  %s%s\n' $name "$finished/$total" "${next:+▶ ${next[1,60]}}" \
+      "${attached:+  $(dim "$#attached pane(s)")}"
+  done
+}
+
+case ${1:-} in
+  ''|show)
+    need_pane
+    refresh ${(f)"$(watched_urls $pane)"}
+    view $pane $([[ -t 1 ]] && print $COLUMNS || print 0)
+    print -rl -- "${view_lines[@]}"
+    ;;
+  ls) list_trails ;;
+  use)
+    need_pane
+    [[ -n ${2:-} ]] || die "usage: trail use <name>"
+    bind $pane $2
+    ;;
+  add)
+    need_pane
+    local_name=$(pane_trail $pane)
+    [[ -n $local_name ]] || die "this pane has no trail; run \`trail use <name>\` first"
+    (( $# > 1 )) || die "usage: trail add <owner/repo#n | PR URL | text>..."
+    add_steps $local_name "${@[2,-1]}"
+    ;;
+  done)
+    need_pane
+    local_name=$(pane_trail $pane)
+    [[ -n $local_name ]] || die "this pane has no trail"
+    [[ ${2:-} == <-> ]] || die "usage: trail done <step number>"
+    tick $local_name $2
+    ;;
+  note)
+    need_pane
+    local_name=$(pane_trail $pane)
+    [[ -n $local_name ]] || die "this pane has no trail"
+    (( $# > 1 )) || die "usage: trail note <text>"
+    print -r -- "- $(date +%m-%d) $(clean "${@[2,-1]}")" >>$(trail_file $local_name)
+    ;;
+  edit)
+    local_name=${2:-$(pane_trail $pane)}
+    [[ -n $local_name ]] || die "usage: trail edit <name>"
+    create_trail $local_name
+    ${EDITOR:-vi} $(trail_file $local_name)
+    ;;
+  watch)
+    target=${2:-$pane}
+    [[ -n $target ]] || die "usage: trail watch <block>"
+    watch $target
+    ;;
+  statusline) statusline ;;
+  record)
+    [[ -n $pane ]] || exit 0
+    shift
+    record "$@"
+    ;;
+  -h|--help) sed -n '2,15s/^# \{0,1\}//p' $self ;;
+  *) die "unknown command '$1'; see \`trail --help\`" ;;
+esac

@@ -1,0 +1,89 @@
+#!/bin/sh
+# Linked as gh and git: records the PRs an agent touches from a Rex pane for
+# trail, then behaves exactly like the real command.
+
+name=${0##*/}
+real=
+IFS=:
+for dir in $PATH; do
+  if [ -x "$dir/$name" ] && ! [ "$dir/$name" -ef "$0" ]; then
+    real=$dir/$name
+    break
+  fi
+done
+unset IFS
+if [ -z "$real" ]; then
+  echo "$name: no $name binary found in PATH besides $0" >&2
+  exit 127
+fi
+
+# Interactive runs need gh's TTY prompts, so only agents (stdout piped) are tracked.
+if [ -n "$TRAIL_PASSTHROUGH" ] || [ -z "$REX_BLOCK" ] || [ -t 1 ]; then
+  exec "$real" "$@"
+fi
+
+# --own marks PRs the agent authors (create, push); trail appends those to the pane's trail.
+record_ref() {
+  "${0%/*}/trail" record "$@" </dev/null >/dev/null 2>&1 &
+}
+
+if [ "$name" = git ]; then
+  dir=.
+  sub=
+  prev=
+  for arg in "$@"; do
+    case "$prev" in
+      -C) dir=$arg; prev=; continue ;;
+      -c) prev=; continue ;;
+    esac
+    case "$arg" in
+      -C | -c) prev=$arg ;;
+      -*) ;;
+      *) sub=$arg; break ;;
+    esac
+  done
+  [ "$sub" = push ] || exec "$real" "$@"
+  "$real" "$@"
+  status=$?
+  # The PR is looked up from the current branch, so pushing another refspec is missed.
+  [ "$status" -eq 0 ] && record_ref --own -C "$dir"
+  exit "$status"
+fi
+
+[ "$1" = pr ] || exec "$real" "$@"
+case "$2" in
+  create | new)
+    out=$("$real" "$@")
+    status=$?
+    [ -n "$out" ] && printf '%s\n' "$out"
+    url=$(printf '%s\n' "$out" | grep -Eo 'https://github\.com/[^/ ]+/[^/ ]+/pull/[0-9]+' | tail -n 1)
+    [ "$status" -eq 0 ] && [ -n "$url" ] && record_ref --own "$url"
+    exit "$status"
+    ;;
+  checkout | co | comment | review | edit | merge | ready | close | reopen | update-branch) ;;
+  *) exec "$real" "$@" ;;
+esac
+
+"$real" "$@"
+status=$?
+[ "$status" -eq 0 ] || exit "$status"
+
+target=
+repo=
+prev=
+for arg in "$@"; do
+  case "$prev" in
+    -R | --repo) repo=$arg; prev=; continue ;;
+  esac
+  case "$arg" in
+    -R | --repo) prev=$arg ;;
+    --repo=*) repo=${arg#--repo=} ;;
+    https://github.com/*/pull/[0-9]*) [ -z "$target" ] && target=$arg ;;
+    \#[0-9]* | [0-9]*)
+      case "${arg#\#}" in *[!0-9]*) ;; *) [ -z "$target" ] && target=${arg#\#} ;; esac
+      ;;
+  esac
+done
+# Without a number or URL, gh means the current branch's PR, and so does record-ref.
+record_ref ${repo:+-R "$repo"} $target
+exit 0

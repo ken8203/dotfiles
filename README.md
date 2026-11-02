@@ -67,6 +67,8 @@ dotfiles/
 ├── bat/.config/bat/config
 ├── revdiff/.config/revdiff/config
 ├── agents/{.claude/CLAUDE.md, .codex/AGENTS.md, .agents/}
+├── trail/.local/bin/{trail, pr-shim, gh, git}
+├── rex/.config/rex/init.lua
 ├── vim/.vimrc, .vim/
 └── scripts/packages-{macos,linux}.sh, skills-restore.sh
 ```
@@ -102,6 +104,54 @@ copy of that skill only collides with it. Install it per machine with:
 ```bash
 npx @vectorize-io/hindsight-coding-agents install claude-code --server self-hosted --api-url https://hindsight.dcard.io
 npx @vectorize-io/hindsight-coding-agents install codex --server self-hosted --api-url https://hindsight.dcard.io
+```
+
+## Trail
+
+Work here often spans a chain of PRs across repos (an API change in one, its client in
+another) plus steps that aren't PRs at all, such as a release or a feature flag. A
+trail is that chain as an ordered checklist, shared by every Rex pane working on it,
+so any pane shows where the work stands. Trails are Markdown files in
+`~/.local/state/trail/trails/`:
+
+```markdown
+# client-call
+
+- [ ] Dcard/GNTC#13760
+- [ ] Dcard/Dock#812
+- [ ] release EntryDesk api
+- [ ] staging: enable CLIENT_CALL_ACCEPT_EXECUTOR_ID
+
+## Notes
+
+- 11-02 #13760 waiting on review
+```
+
+PR steps count as done once GitHub says merged or closed; free-text steps are ticked
+with `trail done <n>`. A PR whose base branch is another step's head is shown as
+stacked, with a hint once that base has merged. `trail use <name>` attaches a pane;
+`trail ls` lists every trail with its next step. See `trail --help` for the rest.
+
+`pr-shim` is linked into `~/.local/bin` as both `gh` and `git`, shadowing Homebrew's.
+When an agent (stdout not a TTY, `REX_BLOCK` set) opens a PR, pushes a branch that has
+one, or runs `gh pr checkout|comment|review|edit|merge|…`, it records the PR for that
+pane. PRs the agent authors are appended to the pane's trail, and a pane touching a PR
+that is already on a trail joins it. Interactive runs pass straight through. Codex runs
+commands in a login shell, where `/etc/zprofile`'s `path_helper` moves
+`/opt/homebrew/bin` ahead again, so the local `~/.zprofile` (not stowed) has to
+re-prepend `~/.local/bin` last.
+
+Press <kbd>Ctrl</kbd>+<kbd>Cmd</kbd>+<kbd>P</kbd> in a pane (the `trail` action in
+`rex/.config/rex/init.lua`, also "Toggle Trail" in the command palette) to float the
+trail over it. <kbd>1</kbd>–<kbd>9</kbd> opens a PR or ticks a step, <kbd>e</kbd> edits
+the trail, <kbd>r</kbd> refreshes, and <kbd>q</kbd> or the shortcut again closes it.
+
+Claude Code can show the trail's progress and next step in its statusline.
+`~/.claude/settings.json` is not stowed, so append the segment to whatever
+`statusLine.command` is already there:
+
+```json
+"statusLine": { "type": "command", "command": "<existing command>; ~/.local/bin/trail statusline" }
 ```
 
 ## Stack

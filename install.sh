@@ -13,7 +13,7 @@ PACKAGES="zsh git tmux starship vim bat revdiff agents"
 
 case "$OS" in
   Darwin)
-    PACKAGES="$PACKAGES ghostty"
+    PACKAGES="$PACKAGES ghostty rex trail"
     "$DOTFILES_DIR/scripts/packages-macos.sh"
     ;;
   Linux)
