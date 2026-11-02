@@ -11,3 +11,12 @@ fi
 
 echo "Installing dependencies..."
 brew bundle --file="$DOTFILES_DIR/Brewfile"
+
+# No Homebrew formula yet, and brew bundle's npm entry can't run fnm's npm under its sanitized PATH.
+if command -v agent-desktop >/dev/null 2>&1; then
+  :
+elif command -v npm >/dev/null 2>&1; then
+  npm install -g agent-desktop
+else
+  echo "Skipping agent-desktop: npm not found, install a Node version with fnm first" >&2
+fi
