@@ -62,7 +62,7 @@ fetch() {
   local file=$(cache_of $1) tmp
   mkdir -p $cache_dir
   tmp=$(mktemp $cache_dir/.fetch.XXXXXX) || return
-  if gh pr view $1 --json number,state,isDraft,reviewDecision,statusCheckRollup,title,baseRefName,headRefName >$tmp; then
+  if gh pr view $1 --json number,state,isDraft,reviewDecision,statusCheckRollup,title,baseRefName,headRefName >$tmp 2>/dev/null; then
     mv $tmp $file
   else
     rm -f $tmp
@@ -364,16 +364,21 @@ watch() {
   local title=$(pane_title $target)
   draw() {
     view $target $COLUMNS
+    # A frame taller than the panel scrolls, so keep heading, a blank, the body and the footer within LINES.
+    local -a body=( "${view_lines[@]}" )
+    local room=$(( LINES - 4 ))
+    (( $#body > room )) && body=( "${(@)body[1,room-1]}" "$(dim "  … $(( $#body - room + 1 )) more lines · e to edit")" )
     print -n $'\e[H\e[2J'
     local heading="${title:-this pane}"
     dim "${heading[1,COLUMNS-8]} · $(date +%H:%M)"
     print '\n'
-    print -rl -- "${view_lines[@]}" ''
+    print -rl -- "${body[@]}" ''
     dim '1-9 open PR / tick step · e edit · r refresh · q close'
   }
   TRAPWINCH() { draw }
-  print -n $'\e[?25l'
-  trap 'print -n "\e[?25h"' EXIT
+  # Alternate screen keeps old frames out of scrollback; no autowrap clips long lines.
+  print -n $'\e[?1049h\e[?7l\e[?25l'
+  trap 'print -n "\e[?25h\e[?7h\e[?1049l"' EXIT
   while :; do
     draw
     refresh $force ${(f)"$(watched_urls $target)"}
