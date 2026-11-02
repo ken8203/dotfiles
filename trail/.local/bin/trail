@@ -289,12 +289,13 @@ owners() {
   print -r -- ${(j:, :)names}
 }
 
-typeset -A CI_MARK=(pass $'\e[32m✓\e[0m' fail $'\e[31m✗\e[0m' pending $'\e[33m●\e[0m' none ' ')
+# Not ✓: that marks a finished step.
+typeset -A CI_MARK=(pass $'\e[32m●\e[0m' fail $'\e[31m✗\e[0m' pending $'\e[33m◌\e[0m' none ' ')
 typeset -A STATE_LABEL=(OPEN open MERGED merged CLOSED closed UNKNOWN '…')
 typeset -A STATE_COLOR=(OPEN 32 MERGED 35 CLOSED 31 UNKNOWN 2)
 
-# key_of: the number key for the target just added, blank past nine.
-key_of() { (( $#view_targets <= 9 )) && print -r -- $#view_targets || print ' ' }
+# key_of: the number of the target just added; steps keep their `trail done` number.
+key_of() { local n=$#view_targets; print -r -- ${(l:2:)n} }
 
 # pr_line url width marker ref_width indent hint: one PR row.
 pr_line() {
@@ -311,6 +312,9 @@ pr_line() {
   [[ $state == OPEN && $ci == fail ]] && notes+=('CI failing')
   hint=${(j: · :)notes}
   local ref=$indent$(short_ref $(ref_of $url))
+  # Open PRs show CI; merged or closed ones are finished steps, ticked like the rest.
+  local mark=${CI_MARK[$ci]:- }
+  [[ $state == (MERGED|CLOSED) ]] && mark=$(dim ✓)
   view_targets+=($url)
   if (( width )); then
     local rest=$(( width - ref_width - 21 - ${#hint} - (${#hint} ? 3 : 0) ))
@@ -319,7 +323,7 @@ pr_line() {
   fi
   # OSC 8 links the ref; its padding is added outside the escape sequence.
   view_lines+=("$(printf ' %s %s %s \e]8;;%s\e\\%s\e]8;;\e\\%*s \e[%sm%-6s\e[0m %s' \
-    "$(dim "$(key_of)")" "$marker" "${CI_MARK[$ci]:- }" $url $ref $(( ref_width - ${#ref} )) '' \
+    "$(dim "$(key_of)")" "$marker" "$mark" $url $ref $(( ref_width - ${#ref} )) '' \
     $color $label $title)${hint:+  $(dim $hint)}")
 }
 
@@ -613,7 +617,10 @@ case ${1:-} in
     local_name=$(pane_trail $pane)
     [[ -n $local_name ]] || die "this pane has no trail"
     (( $# > 1 )) || die "usage: trail note <text>"
-    print -r -- "- $(date +%m-%d) $(clean "${@[2,-1]}")" >>$(trail_file $local_name)
+    text=$(clean "${@[2,-1]}")
+    # Notes are dated; keep a date the text already starts with.
+    [[ $text == [0-9][0-9]-[0-9][0-9](| *) ]] || text="$(date +%m-%d) $text"
+    print -r -- "- $text" >>$(trail_file $local_name)
     ;;
   edit)
     local_name=${2:-$(pane_trail $pane)}
