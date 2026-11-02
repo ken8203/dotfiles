@@ -12,8 +12,7 @@ LOCK="${SKILL_LOCK:-$HOME/.agents/.skill-lock.json}"
 # Installed from upstream with `disable-model-invocation: true`, which limits them
 # to explicit /slash calls. Stripped so the model can reach for them on its own.
 MODEL_INVOCABLE=(
-  grill-me handoff implement improve-codebase-architecture
-  to-issues to-prd to-spec to-tickets writing-great-skills
+  grill-me handoff implement improve-codebase-architecture to-spec to-tickets
 )
 
 # The agents the lock was built against. `--agent '*'` fans out to every agent the
