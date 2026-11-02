@@ -7,6 +7,7 @@
 #   trail ls                   every trail with its progress and next step
 #   trail use <name>           attach this pane to a trail, creating it if needed
 #   trail add <step>...        append steps: owner/repo#n, a PR URL, or free text
+#   trail link <n> <pr>        turn free-text step n into that PR once it's open
 #   trail done <n>             tick (or untick) free-text step n
 #   trail note <text>          append a note
 #   trail edit [name]          open a trail in $EDITOR
@@ -153,22 +154,45 @@ trails_with() {
   done
 }
 
-# add_steps name step...: inserts after the last step, ahead of the notes.
+# pr_exists ref: whether GitHub knows the PR, caching it on the way.
+pr_exists() {
+  local cache=$(cache_of $(url_of $1))
+  [[ -f $cache ]] || fetch $(url_of $1)
+  [[ -f $cache ]]
+}
+
+# step_done mark text: whether a step line counts as done; PR steps once merged or closed.
+step_done() {
+  local ref=${(M)2##$~REF_PATTERN}
+  [[ -n $ref ]] || { [[ $1 != ' ' ]]; return }
+  [[ $(jq -r .state $(cache_of $(url_of $ref)) 2>/dev/null) == (MERGED|CLOSED) ]]
+}
+
+# add_steps [--next] name step...: inserts after the last step, or with --next ahead of the
+# first unfinished one, always ahead of the notes.
 add_steps() {
-  local name=$1 file=$(trail_file $1) step line i insert_at=0 notes_at=0
+  local next=0
+  [[ $1 == --next ]] && { next=1; shift }
+  local name=$1 file=$(trail_file $1) step ref i insert_at=0 before=0 notes_at=0
   shift
   create_trail $name
   local -a lines=( "${(@f)$(<$file)}" ) new=()
   for step; do
     step=$(clean $step)
     [[ $step == $~URL_PATTERN* ]] && step=$(ref_of ${(M)step##$~URL_PATTERN})
+    ref=${(M)step##$~REF_PATTERN}
+    [[ -z $ref ]] || pr_exists $ref || die "$ref: no such PR"
     [[ -n $step ]] && new+=("- [ ] $step")
   done
   for (( i = 1; i <= $#lines; i++ )); do
     [[ $lines[i] == '## Notes'* ]] && { notes_at=$i; break }
-    [[ $lines[i] == '- ['[\ xX]'] '* ]] && insert_at=$i
+    [[ $lines[i] == (#b)'- ['([ xX])'] '(*) ]] || continue
+    (( next )) && ! step_done $match[1] $match[2] && { before=$i; break }
+    insert_at=$i
   done
-  if (( insert_at )); then
+  if (( before )); then
+    lines[before]=( "${new[@]}" "$lines[before]" )
+  elif (( insert_at )); then
     lines[insert_at]=( "$lines[insert_at]" "${new[@]}" )
   elif (( notes_at )); then
     lines=( "$lines[1]" '' "${new[@]}" '' "${(@)lines[notes_at,-1]}" )
@@ -191,6 +215,23 @@ tick() {
     return
   done
   die "no step $target"
+}
+
+# link name n ref: turns free-text step n into a PR step and drops that PR's other entry.
+link() {
+  local file=$(trail_file $1) target=$2 ref=$3 i n=0 at=0
+  local -a lines=( "${(@f)$(<$file)}" ) dupes=()
+  for (( i = 1; i <= $#lines; i++ )); do
+    [[ $lines[i] == '## Notes'* ]] && break
+    [[ $lines[i] == (#b)'- ['([ xX])'] '(*) ]] || continue
+    (( ++n == target )) && { at=$i; continue }
+    [[ ${(M)match[2]##$~REF_PATTERN} == $ref ]] && dupes+=($i)
+  done
+  (( at )) || die "no step $target"
+  [[ ${lines[at]#- \[?\] } == $~REF_PATTERN* ]] && die "step $target is already a PR"
+  lines[at]="- [ ] $ref"
+  for i in ${(On)dupes}; do lines[i]=(); done
+  print -rl -- "${lines[@]}" >$file
 }
 
 bind() {
@@ -218,7 +259,7 @@ record() {
   if [[ -z $current ]]; then
     (( $#found )) && bind $pane $found[1]
   elif (( own && ! $#found )); then
-    add_steps $current $(ref_of $url)
+    add_steps --next $current $(ref_of $url)
   fi
 }
 
@@ -550,6 +591,16 @@ case ${1:-} in
     (( $# > 1 )) || die "usage: trail add <owner/repo#n | PR URL | text>..."
     add_steps $local_name "${@[2,-1]}"
     ;;
+  link)
+    need_pane
+    local_name=$(pane_trail $pane)
+    [[ -n $local_name ]] || die "this pane has no trail"
+    ref=${${(M)${3:-}##$~URL_PATTERN}:+$(ref_of ${(M)3##$~URL_PATTERN})}
+    ref=${ref:-${(M)${3:-}##$~REF_PATTERN}}
+    [[ ${2:-} == <-> && -n $ref ]] || die "usage: trail link <step number> <owner/repo#n | PR URL>"
+    pr_exists $ref || die "$ref: no such PR"
+    link $local_name $2 $ref
+    ;;
   done)
     need_pane
     local_name=$(pane_trail $pane)
@@ -581,6 +632,6 @@ case ${1:-} in
     shift
     record "$@"
     ;;
-  -h|--help) sed -n '2,15s/^# \{0,1\}//p' $self ;;
+  -h|--help) sed -n '2,16s/^# \{0,1\}//p' $self ;;
   *) die "unknown command '$1'; see \`trail --help\`" ;;
 esac

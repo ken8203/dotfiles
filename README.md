@@ -128,14 +128,17 @@ so any pane shows where the work stands. Trails are Markdown files in
 ```
 
 PR steps count as done once GitHub says merged or closed; free-text steps are ticked
-with `trail done <n>`. A PR whose base branch is another step's head is shown as
+with `trail done <n>`. `trail add` refuses a PR GitHub doesn't know. A step written
+before its PR exists becomes that PR with `trail link <n> <pr>`, which also drops any
+other entry for it. A PR whose base branch is another step's head is shown as
 stacked, with a hint once that base has merged. `trail use <name>` attaches a pane;
 `trail ls` lists every trail with its next step. See `trail --help` for the rest.
 
 `pr-shim` is linked into `~/.local/bin` as both `gh` and `git`, shadowing Homebrew's.
 When an agent (stdout not a TTY, `REX_BLOCK` set) opens a PR, pushes a branch that has
 one, or runs `gh pr checkout|comment|review|edit|merge|…`, it records the PR for that
-pane. PRs the agent authors are appended to the pane's trail, and a pane touching a PR
+pane. PRs the agent authors join the pane's trail ahead of its first unfinished step,
+and a pane touching a PR
 that is already on a trail joins it. Interactive runs pass straight through. Codex runs
 commands in a login shell, where `/etc/zprofile`'s `path_helper` moves
 `/opt/homebrew/bin` ahead again, so the local `~/.zprofile` (not stowed) has to
