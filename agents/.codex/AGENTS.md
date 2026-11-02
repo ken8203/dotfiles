@@ -21,6 +21,7 @@
 - 我只是問問題時，回答就好，不要動手改 code
 - 測試只跑跟改動相關的範圍，不要跑 full suite
 - PR scope 之外的問題開 issue 記錄，不要順手修
+- 在 Rex pane 推一條跨 PR／跨 repo 的工作鏈時，先 `trail use <name>` 綁定；開的 PR 會自動接上，release、開 flag、deploy 這類非 PR 步驟用 `trail add` 加、做完用 `trail done <n>` 勾，卡點或交接資訊用 `trail note` 記
 - Debug 先查證據（Sentry／PostHog／logs）找 root cause；結論要有數據支持，不要純推論
 - 發 PR 前的流程是 `/rethink` → `/simplify`／`/code-review`／`/security-review`，每一步都依任務性質與難易度自行決定要不要跑：
   - `/rethink`：設計有取捨、或改動有一定規模時跑。另開全新 context 的 subagent 跑，讓它不帶實作過程的思路重新想做法；提案交給我挑，照我選的改完再往下
