@@ -145,6 +145,8 @@ Press <kbd>Ctrl</kbd>+<kbd>Cmd</kbd>+<kbd>P</kbd> in a pane (the `trail` action 
 `rex/.config/rex/init.lua`, also "Toggle Trail" in the command palette) to float the
 trail over it. <kbd>1</kbd>–<kbd>9</kbd> opens a PR or ticks a step, <kbd>e</kbd> edits
 the trail, <kbd>r</kbd> refreshes, and <kbd>q</kbd> or the shortcut again closes it.
+The panel fits itself to the layer as you resize it; when the trail is taller,
+<kbd>j</kbd>/<kbd>k</kbd>, the arrow keys, or the mouse wheel scroll it.
 
 Claude Code can show the trail's progress and next step in its statusline.
 `~/.claude/settings.json` is not stowed, so append the segment to whatever

@@ -360,41 +360,63 @@ watched_urls() {
 }
 
 watch() {
-  local target=$1 key force=
+  local target=$1 key force= size top=0 fetched=-$ttl_seconds
   local title=$(pane_title $target)
   draw() {
+    size=$(stty size)
+    LINES=${size% *} COLUMNS=${size#* }
     view $target $COLUMNS
-    # A frame taller than the panel scrolls, so keep heading, a blank, the body and the footer within LINES.
-    local -a body=( "${view_lines[@]}" )
-    local room=$(( LINES - 4 ))
-    (( $#body > room )) && body=( "${(@)body[1,room-1]}" "$(dim "  … $(( $#body - room + 1 )) more lines · e to edit")" )
+    # Heading, a blank, the body and the footer must fit in LINES, or the frame scrolls.
+    local room=$(( LINES > 7 ? LINES - 4 : 3 )) total=$#view_lines
+    local max=$(( total > room ? total - room : 0 ))
+    (( top > max )) && top=$max
+    (( top < 0 )) && top=0
+    local footer='1-9 open PR / tick step · e edit · r refresh · q close'
+    (( total > room )) && footer="$(( top + 1 ))-$(( top + room ))/$total · j/k scroll · $footer"
     print -n $'\e[H\e[2J'
     local heading="${title:-this pane}"
     dim "${heading[1,COLUMNS-8]} · $(date +%H:%M)"
     print '\n'
-    print -rl -- "${body[@]}" ''
-    dim '1-9 open PR / tick step · e edit · r refresh · q close'
+    print -rl -- "${(@)view_lines[top+1,top+room]}" ''
+    dim $footer
   }
-  TRAPWINCH() { draw }
-  # Alternate screen keeps old frames out of scrollback; no autowrap clips long lines.
-  # Echo stays off between reads too, so input that lands mid-redraw (mouse moves) isn't printed.
+  # Alternate screen keeps old frames out of scrollback; no autowrap clips long lines; 1007 turns
+  # the mouse wheel into arrow keys. Echo stays off between reads too, so input that lands
+  # mid-redraw (mouse moves) isn't printed.
   local tty=$(stty -g)
   stty -echo
-  print -n $'\e[?1049h\e[?7l\e[?25l'
+  print -n $'\e[?1049h\e[?7l\e[?25l\e[?1007h'
   # The function's locals are gone when its EXIT trap runs, so expand $tty now.
-  trap "stty ${(q)tty}; print -n '\e[?25h\e[?7h\e[?1049l'" EXIT
+  trap "stty ${(q)tty}; print -n '\e[?1007l\e[?25h\e[?7h\e[?1049l'" EXIT
   while :; do
     draw
-    refresh $force ${(f)"$(watched_urls $target)"}
-    draw
-    force=
-    # Skip keys the panel doesn't use instead of redrawing on each one.
+    if [[ -n $force ]] || (( SECONDS - fetched >= ttl_seconds )); then
+      refresh $force ${(f)"$(watched_urls $target)"}
+      fetched=$SECONDS force=
+      draw
+    fi
+    # Poll each second so a resize redraws; skip keys the panel doesn't use without redrawing.
     key=
-    while read -s -t 30 -k 1 key && [[ $key != [qre1-9] ]]; do key=; done
-    [[ -n $key ]] || continue
+    while :; do
+      if read -s -t 1 -k 1 key; then
+        [[ $key == [qrejk1-9$'\e'] ]] && break
+      elif [[ $(stty size) != $size ]] || (( SECONDS - fetched >= ttl_seconds )); then
+        break
+      fi
+      key=
+    done
     case $key in
       q) break ;;
       r) force=-f ;;
+      j) (( top++ )) ;;
+      k) (( top-- )) ;;
+      $'\e')
+        read -s -t 0.05 -k 2 key || key=
+        case $key in
+          ([\[O]A) (( top-- )) ;;
+          ([\[O]B) (( top++ )) ;;
+        esac
+        ;;
       e)
         local name=$(pane_trail $target)
         [[ -n $name ]] || continue
