@@ -377,14 +377,21 @@ watch() {
   }
   TRAPWINCH() { draw }
   # Alternate screen keeps old frames out of scrollback; no autowrap clips long lines.
+  # Echo stays off between reads too, so input that lands mid-redraw (mouse moves) isn't printed.
+  local tty=$(stty -g)
+  stty -echo
   print -n $'\e[?1049h\e[?7l\e[?25l'
-  trap 'print -n "\e[?25h\e[?7h\e[?1049l"' EXIT
+  # The function's locals are gone when its EXIT trap runs, so expand $tty now.
+  trap "stty ${(q)tty}; print -n '\e[?25h\e[?7h\e[?1049l'" EXIT
   while :; do
     draw
     refresh $force ${(f)"$(watched_urls $target)"}
     draw
     force=
-    read -s -t 30 -k 1 key || continue
+    # Skip keys the panel doesn't use instead of redrawing on each one.
+    key=
+    while read -s -t 30 -k 1 key && [[ $key != [qre1-9] ]]; do key=; done
+    [[ -n $key ]] || continue
     case $key in
       q) break ;;
       r) force=-f ;;
