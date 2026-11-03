@@ -109,9 +109,9 @@ npx @vectorize-io/hindsight-coding-agents install codex --server self-hosted --a
 
 [cairn](https://github.com/ken8203/cairn) (private) tracks each agent session's chain of
 PRs and steps across repos. `install.sh` installs it on macOS through
-`scripts/cairn-install.sh`, which builds it into `~/.local/bin` along with its `gh` and
-`git` shims; the Rex action that floats its panel (<kbd>Ctrl</kbd>+<kbd>Cmd</kbd>+<kbd>P</kbd>)
-lives in `rex/.config/rex/init.lua`.
+`scripts/cairn-install.sh`, which builds it into `~/.local/bin` and runs `cairn setup` to
+install its Claude Code and Codex plugin; the Rex action that floats its panel
+(<kbd>Ctrl</kbd>+<kbd>Cmd</kbd>+<kbd>P</kbd>) lives in `rex/.config/rex/init.lua`.
 
 ## Stack
 

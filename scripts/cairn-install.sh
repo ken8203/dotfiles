@@ -12,5 +12,5 @@ fi
 [ -d "$CAIRN_DIR" ] || git clone git@github.com:ken8203/cairn.git "$CAIRN_DIR"
 make -C "$CAIRN_DIR" install PREFIX="$HOME/.local"
 
-# Sessions started before the rename still call trail.
-ln -sf cairn "$BIN/trail"
+# Installs cairn's Claude Code and Codex plugin; Codex's hooks still need trusting in /hooks.
+"$BIN/cairn" setup || echo "cairn setup needs attention; run \`cairn doctor\`." >&2
