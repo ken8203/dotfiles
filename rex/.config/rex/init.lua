@@ -9,8 +9,9 @@ rex.action{
   keywords = "pull request github chain progress",
   run = function(ctx)
     if ctx.block_id == nil then error("no focused pane", 0) end
-    local res = rex.exec{ home .. "/.local/bin/cairn", "panel", ctx.block_id }
+    local res = rex.exec{ home .. "/.local/bin/cairn", "panel", "--lua", ctx.block_id }
     if not res.ok then error(res.stderr ~= "" and res.stderr or "cairn panel failed", 0) end
+    loadstring(res.stdout)()
   end,
 }
 
