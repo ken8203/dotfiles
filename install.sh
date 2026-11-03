@@ -13,7 +13,7 @@ PACKAGES="zsh git tmux starship vim bat revdiff agents"
 
 case "$OS" in
   Darwin)
-    PACKAGES="$PACKAGES ghostty rex trail"
+    PACKAGES="$PACKAGES ghostty rex"
     "$DOTFILES_DIR/scripts/packages-macos.sh"
     ;;
   Linux)
@@ -30,6 +30,11 @@ echo "Creating symlinks..."
 cd "$DOTFILES_DIR"
 # shellcheck disable=SC2086 # $PACKAGES is a deliberate argument list
 stow --target="$HOME" $PACKAGES
+
+if [ "$OS" = Darwin ]; then
+  echo "Installing cairn..."
+  "$DOTFILES_DIR/scripts/cairn-install.sh"
+fi
 
 # Install git hooks
 if command -v prek >/dev/null 2>&1; then

@@ -1,7 +1,7 @@
 -- Rex configuration. Apply changes with `rex config reload`.
 
 local home = os.getenv("HOME")
-local panel_label = "trail"
+local panel_label = "cairn"
 
 local function window_of(view, block_id)
   for _, window in ipairs(view.windows) do
@@ -14,9 +14,9 @@ local function window_of(view, block_id)
 end
 
 rex.action{
-  name = "trail",
-  title = "Toggle Trail",
-  description = "Float the focused pane's trail: its chain of PRs and steps, and where it stands.",
+  name = "cairn",
+  title = "Toggle Cairn",
+  description = "Float the trail of the focused pane's agent session: its chain of PRs and steps, and where it stands.",
   keywords = "pull request github chain progress",
   run = function(ctx)
     if ctx.block_id == nil then error("no focused pane", 0) end
@@ -44,11 +44,11 @@ rex.action{
       layout = { block = {
         flavor = "com.superlogical.terminal.shell",
         label = panel_label,
-        options = { command = { home .. "/.local/bin/trail", "watch", ctx.block_id } },
+        options = { command = { home .. "/.local/bin/cairn", "watch", ctx.block_id } },
       } },
     }
     if open_err ~= nil then error(open_err, 0) end
   end,
 }
 
-rex.bind("ctrl+cmd+p", "trail")
+rex.bind("ctrl+cmd+p", "cairn")
