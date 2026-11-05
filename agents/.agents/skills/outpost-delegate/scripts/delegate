@@ -644,7 +644,7 @@ cmd_prune() {
     list=${b}_names
     while read -r n; do
       [ -n "$n" ] || continue
-      [[ " ${done_tasks[*]} " != *" $n "* ]] || continue
+      [[ " ${done_tasks[*]-} " != *" $n "* ]] || continue
       if [[ $n =~ ^[a-z][a-z0-9_-]{0,31}$ ]]; then
         valid+=("$b:$n")
       else
