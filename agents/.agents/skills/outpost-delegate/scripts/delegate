@@ -18,6 +18,7 @@ usage:
   delegate followup <task> <review-file>
   delegate collect <task> <local-dir>
   delegate clean <task>
+  delegate prune [--apply]
 EOF
   exit 2
 }
@@ -325,6 +326,7 @@ backend() {
 }
 
 cmd_start() {
+  [ $# -ge 1 ] || usage
   local task=$1 brief='' kind='' model='' effort='' repo='' clone='' branch='' base=HEAD
   shift
   [[ $task =~ ^[a-z][a-z0-9_-]{0,31}$ ]] || die "task must match [a-z][a-z0-9_-]{0,31}"
@@ -455,27 +457,228 @@ cmd_collect() {
   echo "report: $dir/REPORT.md"
 }
 
-cmd_clean() {
-  [ $# -eq 1 ] || usage
-  local b
-  b=$(backend "$(meta "$1")")
-  "${b}_kill" "$1"
+# Removes worktree $2 of clone $1 and refs/delegate/$3; with $4, also branch $4.
+drop_worktree() {
   remote '
-meta='"$ROOT"'/delegate/$1/.task.json
-clone=$(jq -r .clone "$meta")
-if [ -n "$(jq -r .branch "$meta")" ]; then
-  stage="worktree remove"
-  git -C "$clone" worktree remove "$clone.$1"
-  git -C "$clone" update-ref -d "refs/delegate/$1"
+stage="worktree remove"
+git -C "$1" worktree remove "$2"
+git -C "$1" update-ref -d "refs/delegate/$3"
+if [ -n "${4:-}" ]; then
+  stage="branch delete"
+  git -C "$1" branch -q -D "$4"
 fi
-echo "cleaned $1"
-' "$1"
+' "$@"
 }
 
-[ $# -ge 2 ] || usage
+cmd_clean() {
+  [ $# -eq 1 ] || usage
+  local m b clone branch
+  m=$(meta "$1")
+  b=$(backend "$m")
+  "${b}_kill" "$1"
+  { read -r clone; read -r branch; } < <(jq -r '.clone, .branch' <<<"$m")
+  [ -z "$branch" ] || drop_worktree "$clone" "$clone.$1" "$1"
+  echo "cleaned $1"
+}
+
+# One line per worktree of every main clone:
+#   <verdict> <name> <task> <clone> <path> <branch> <pr> <reason> <backend>
+# Only a merged PR makes a worktree prunable. Branch tips on outpost differ from
+# PR heads once the coordinator fixes up and squash-merges, so the PR state comes
+# from gh rather than from git ancestry.
+prune_scan() {
+  remote '
+stage=scan
+cd '"$ROOT"'
+for clone in "$PWD"/*/; do
+  clone=${clone%/}
+  [ -d "$clone/.git" ] || continue
+  git -C "$clone" worktree list --porcelain |
+    awk "/^worktree /{w=substr(\$0, 10)} /^branch /{print w, substr(\$0, 19)}" |
+    while read -r path branch; do
+      [ "$path" != "$clone" ] || continue
+      name=${path##*/}
+      task=${name#"${clone##*/}".}
+      # With a mailbox there may be a worker, whatever branch its record names,
+      # and the worker can write that record, so only a listed backend counts.
+      rec=delegate/$task/.task.json backend=- recbranch=$branch
+      if [ -f "$rec" ]; then
+        backend=$(jq -r ".backend // \"rex\"" "$rec")
+        case $backend in rex | hc | ssh) ;; *) backend=bad ;; esac
+        recbranch=$(jq -r .branch "$rec")
+      fi
+      if ! prs=$(cd "$clone" && gh pr list --head "$branch" --state all --limit 20 --json number,state,mergedAt); then
+        echo "skip $name $task $clone $path $branch - gh-failed $backend"
+        continue
+      fi
+      read -r pr state merged < <(jq -r "(map(select(.state == \"OPEN\")) + map(select(.state == \"MERGED\")) + .)[0] // {}
+        | \"\(if .number then \"#\(.number)\" else \"-\" end) \(.state // \"NONE\") \(.mergedAt // \"-\")\"" <<<"$prs")
+      verdict=keep
+      case $state in
+        OPEN) reason=open ;;
+        CLOSED) reason=closed ;;
+        NONE) reason=no-pr ;;
+        MERGED)
+          verdict=skip
+          if [ "$recbranch" != "$branch" ]; then
+            reason=branch-mismatch
+          elif [ -n "$(git -C "$path" status --porcelain)" ]; then
+            reason=dirty
+          elif [ "$(git -C "$path" log -1 --format=%ct)" -gt "$(date -d "$merged" +%s)" ]; then
+            reason=commits-after-merge
+          else
+            verdict=prune reason=merged
+          fi
+          ;;
+      esac
+      echo "$verdict $name $task $clone $path $branch $pr $reason $backend"
+    done
+done
+'
+}
+
+# Workers whose task has no worktree: given <backend>:<task> args, one line each,
+#   <verdict> <task> <backend> <reason>
+# A worker is prunable once its report has sat for a day, so one still in
+# follow-up rounds is left alone.
+prune_orphans() {
+  remote '
+stage=orphans
+for w in "$@"; do
+  b=${w%%:*} t=${w#*:} mb='"$ROOT"'/delegate/${w#*:}
+  if [ ! -f "$mb/.task.json" ]; then echo "keep $t $b no-mailbox"; continue; fi
+  if [ "$(jq -r ".backend // \"rex\"" "$mb/.task.json")" != "$b" ]; then echo "keep $t $b other-backend"; continue; fi
+  clone=$(jq -r .clone "$mb/.task.json")
+  if [ -n "$(jq -r .branch "$mb/.task.json")" ] && [ -d "$clone.$t" ]; then continue; fi
+  if [ ! -f "$mb/REPORT.md" ]; then
+    echo "keep $t $b no-report"
+  elif [ -n "$(find "$mb/REPORT.md" -mmin -1440)" ]; then
+    echo "keep $t $b fresh-report"
+  else
+    echo "prune $t $b reported"
+  fi
+done
+' "$@"
+}
+
+# The worker's state for a prune: none when it has no session, unknown when
+# its backend can't be reached.
+worker_state() {
+  case $1 in
+    -) echo none ;;
+    rex)
+      if [ -z "${rex_names+x}" ]; then
+        echo unknown
+      elif ! grep -qxF -- "$2" <<<"$rex_names"; then
+        echo none
+      else
+        # A session left with no status is the shell its agent exited to.
+        local out rc=0
+        out=$(rx "do" -s "$2" "$WAIT" timeout=1 states=idle,done,working,blocked,error 2>/dev/null) || rc=$?
+        case $rc in
+          0) jq -r .status <<<"$out" ;;
+          124) echo exited ;;
+          *) echo unknown ;;
+        esac
+      fi
+      ;;
+    hc)
+      if [ -z "${hc_names+x}" ]; then
+        echo unknown
+      elif ! grep -qxF -- "$2" <<<"$hc_names"; then
+        echo none
+      else
+        hc_status "$2" 2>/dev/null || echo unknown
+      fi
+      ;;
+    ssh) ssh_poll "$2" 0 2>/dev/null | jq -r .status || echo unknown ;;
+  esac
+}
+
+cmd_prune() {
+  local apply=''
+  case $#:${1:-} in
+    0:) ;;
+    1:--apply) apply=1 ;;
+    *) usage ;;
+  esac
+
+  # Unset when the backend can't be listed, so its workers are never pruned blind.
+  unset rex_names hc_names
+  local names
+  if names=$(rx ls --json 2>/dev/null | jq -r '.sessions[].label'); then
+    rex_names=$names
+  else
+    echo "delegate: Rex on $HOST unreachable; its workers are skipped" >&2
+  fi
+  if names=$(hcx ls --all --json 2>/dev/null | jq -r --arg h "$HOST/" '.terminals[].address | select(startswith($h))' |
+    while read -r a; do hcx get --json "$a" | jq -r '.name // empty'; done); then
+    hc_names=$names
+  else
+    echo "delegate: hc unreachable; its workers are skipped" >&2
+  fi
+
+  # The scan comes in on fd 3, since ssh and rex in the loop read stdin.
+  local verdict name task clone path branch pr reason b state pruned=0 done_tasks=()
+  while read -r verdict name task clone path branch pr reason b <&3; do
+    case $b in rex | hc | ssh | -) ;; *) verdict=skip reason="unknown-backend-$b" b=- ;; esac
+    if [ "$verdict" = prune ]; then
+      state=$(worker_state "$b" "$task")
+      case $state in
+        none | idle | done | exited | error) ;;
+        *) verdict=skip reason="worker-$state" ;;
+      esac
+    fi
+    printf '%-6s %-40s %-7s %s\n' "$verdict" "$name" "$pr" "$reason"
+    [ "$verdict" = prune ] || continue
+    pruned=$((pruned + 1))
+    done_tasks+=("$task")
+    [ -n "$apply" ] || continue
+    [ "$b" = - ] || "${b}_kill" "$task" >/dev/null
+    drop_worktree "$clone" "$path" "$task" "$branch"
+  done 3< <(prune_scan)
+
+  # A worker whose worktree went above is already gone.
+  local valid=() list n
+  for b in rex hc; do
+    list=${b}_names
+    while read -r n; do
+      [ -n "$n" ] || continue
+      [[ " ${done_tasks[*]} " != *" $n "* ]] || continue
+      if [[ $n =~ ^[a-z][a-z0-9_-]{0,31}$ ]]; then
+        valid+=("$b:$n")
+      else
+        printf '%-6s %-40s %-7s %s\n' keep "$n" - "$b not-a-task"
+      fi
+    done <<<"${!list-}"
+  done
+  if [ ${#valid[@]} -gt 0 ]; then
+    while read -r verdict task b reason <&3; do
+      if [ "$verdict" = prune ]; then
+        state=$(worker_state "$b" "$task")
+        case $state in
+          idle | done | exited | error) ;;
+          *) verdict=skip reason="worker-$state" ;;
+        esac
+      fi
+      printf '%-6s %-40s %-7s %s\n' "$verdict" "$task" - "$b $reason"
+      [ "$verdict" = prune ] || continue
+      pruned=$((pruned + 1))
+      [ -z "$apply" ] || "${b}_kill" "$task" >/dev/null
+    done 3< <(prune_orphans "${valid[@]}")
+  fi
+
+  if [ -n "$apply" ]; then
+    echo "pruned $pruned"
+  else
+    echo "$pruned to prune; rerun with --apply"
+  fi
+}
+
+[ $# -ge 1 ] || usage
 cmd=$1
 shift
 case $cmd in
-  start | wait | read | followup | collect | clean) "cmd_$cmd" "$@" ;;
+  start | wait | read | followup | collect | clean | prune) "cmd_$cmd" "$@" ;;
   *) usage ;;
 esac
