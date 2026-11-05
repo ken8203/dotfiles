@@ -1,6 +1,6 @@
 ---
 name: outpost-delegate
-description: Delegate a research or implementation task to a worker on outpost. Use when a task should run on outpost, or to follow up on or clean up a delegated task.
+description: Delegate a research or implementation task to a worker on outpost. Use when a task should run on outpost, or to follow up on, clean up, or prune delegated tasks and merged worktrees on outpost.
 ---
 
 The local session is the **coordinator**; an agent on outpost is the **worker**. The **backend** carries control and state. `start` picks it from the coordinator's terminal and the task keeps it for life:
@@ -101,3 +101,12 @@ scripts/delegate clean <task>
 ```
 
 It ends the worker and removes the worktree, keeping the branch, the mailbox as the task's record, and the main clone. Delete the branch on outpost once it is merged or pushed.
+
+To sweep everything already merged, including worktrees no task made:
+
+```bash
+scripts/delegate prune            # dry run: one line per worktree and leftover worker
+scripts/delegate prune --apply
+```
+
+A worktree is pruned (worker, worktree, `refs/delegate/<task>`, branch) when gh on outpost finds its branch's PR merged, it has no uncommitted changes, nothing was committed after the merge, and its worker is not `working` or `blocked`. A worker with no worktree is ended once its task's `REPORT.md` is a day old and it is not `working` or `blocked`. Worktrees whose branch has no PR, sessions with no mailbox, and mailboxes are never touched. Run the dry run first and bring anything listed as `skip` to the user.
