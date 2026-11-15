@@ -368,7 +368,12 @@ cmd_start() {
   fi
   if [ -n "$branch" ]; then
     base_sha=$(git -C "$repo" rev-parse --verify "$base^{commit}")
-    git -C "$repo" push -q --no-verify "$HOST:$clone" "$base_sha:refs/delegate/$task"
+    # A push of objects the clone already has hangs: git 2.54's send-pack sends no pack, and
+    # outpost's 2.47 receive-pack keeps waiting for one. So set the ref there when it can.
+    if ! remote 'stage="base ref"; git -C "$1" cat-file -e "$2^{commit}" 2>/dev/null && git -C "$1" update-ref "refs/delegate/$3" "$2"' \
+      "$clone" "$base_sha" "$task" 2>/dev/null; then
+      git -C "$repo" push -q --no-verify "$HOST:$clone" "$base_sha:refs/delegate/$task"
+    fi
     cwd=$clone.$task
   fi
 
