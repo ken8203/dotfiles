@@ -11,7 +11,7 @@ WAIT=$(cd "$(dirname "$0")" && pwd)/wait.lua
 usage() {
   cat >&2 <<'EOF'
 usage:
-  delegate start <task> --brief <dir> --kind claude|codex --model <m> --effort <e>
+  delegate start <task> --brief <dir> --kind claude|codex --model <m> --effort <e> [--heavy]
                  [--repo <local-repo> [--clone <abs>] [--branch <b> [--base <rev>]]]
   delegate wait <task> <timeout-ms>
   delegate read <task>
@@ -326,10 +326,16 @@ backend() {
 
 cmd_start() {
   [ $# -ge 1 ] || usage
-  local task=$1 brief='' kind='' model='' effort='' repo='' clone='' branch='' base=HEAD
+  local task=$1 brief='' kind='' model='' effort='' heavy=false repo='' clone='' branch='' base=HEAD
   shift
   [[ $task =~ ^[a-z][a-z0-9_-]{0,31}$ ]] || die "task must match [a-z][a-z0-9_-]{0,31}"
-  while [ $# -ge 2 ]; do
+  while [ $# -ge 1 ]; do
+    if [ "$1" = --heavy ]; then
+      heavy=true
+      shift
+      continue
+    fi
+    [ $# -ge 2 ] || usage
     case $1 in
       --brief) brief=$2 ;;
       --kind) kind=$2 ;;
@@ -343,7 +349,7 @@ cmd_start() {
     esac
     shift 2
   done
-  [ $# -eq 0 ] && [ -n "$model" ] && [ -n "$effort" ] || usage
+  [ -n "$model" ] && [ -n "$effort" ] || usage
   [ -z "$branch" ] || [ -n "$repo" ] || usage
   [ -f "$brief/brief.md" ] || die "$brief/brief.md not found"
 
@@ -358,6 +364,8 @@ cmd_start() {
   elif [ -n "${REX_SESSION:-}" ]; then
     backend=rex
   fi
+
+  load_gate "$heavy"
 
   local base_sha='' cwd=$ROOT/delegate/$task
   if [ -n "$repo" ]; then
@@ -379,8 +387,9 @@ cmd_start() {
   local meta
   meta=$(jq -nc --arg repo "$repo" --arg clone "$clone" --arg branch "$branch" --arg base "$base_sha" \
     --arg backend "$backend" --arg kind "$kind" --arg model "$model" --arg effort "$effort" --arg cwd "$cwd" \
+    --argjson heavy "$heavy" \
     '{repo: $repo, clone: $clone, branch: $branch, base: $base,
-      backend: $backend, kind: $kind, model: $model, effort: $effort, cwd: $cwd}')
+      backend: $backend, kind: $kind, model: $model, effort: $effort, cwd: $cwd, heavy: $heavy}')
 
   COPYFILE_DISABLE=1 tar --no-xattrs -C "$brief" -cf - . | remote '
 task=$1 clone=$2 branch=$3 kind=$4 meta=$5
@@ -662,15 +671,7 @@ worker_state() {
   esac
 }
 
-cmd_prune() {
-  local apply=''
-  case $#:${1:-} in
-    0:) ;;
-    1:--apply) apply=1 ;;
-    *) usage ;;
-  esac
-
-  # Unset when the backend can't be listed, so its workers are never pruned blind.
+list_workers() {
   unset rex_names hc_names
   local names
   if names=$(rx ls --json 2>/dev/null | jq -r '.sessions[].label'); then
@@ -684,6 +685,67 @@ cmd_prune() {
   else
     echo "delegate: hc unreachable; its workers are skipped" >&2
   fi
+}
+
+active_workers() {
+  list_workers
+  local b list
+  {
+    for b in rex hc; do
+      list=${b}_names
+      sed "/^$/d; s/^/$b /" <<<"${!list-}"
+    done
+    remote 'stage=scan; cd '"$ROOT"'/delegate; for w in */.worker; do [ ! -d "$w" ] || [ -e "$w/exit" ] || echo "ssh ${w%/.worker}"; done'
+  } | while read -r b task; do
+    state=$(worker_state "$b" "$task" </dev/null)
+    case $state in working | blocked) echo "$task $state" ;; esac
+  done
+}
+
+# Parallel workers have run outpost out of memory.
+MAX_ACTIVE=3
+EX_TEMPFAIL=75
+
+load_gate() {
+  local heavy=$1 rows load cores why=''
+  rows=$(remote '
+stage=load
+while read -r t s; do
+  [ -n "$t" ] || continue
+  echo "$t $s $(jq -r ".heavy // false" '"$ROOT"'/delegate/"$t"/.task.json 2>/dev/null || echo false)"
+done <<<"$1"
+read -r l _ </proc/loadavg
+echo "$l $(nproc)"
+' "$(active_workers)")
+  read -r load cores <<<"$(tail -n 1 <<<"$rows")"
+  rows=$(sed '$d' <<<"$rows")
+  if [ "$(awk 'NF {n++} END {print n + 0}' <<<"$rows")" -ge "$MAX_ACTIVE" ]; then
+    why+="  $MAX_ACTIVE or more workers are active"$'\n'
+  fi
+  if [ "$heavy" = true ] && awk '$3 == "true" {f = 1} END {exit !f}' <<<"$rows"; then
+    why+="  this task is heavy and a heavy worker is active"$'\n'
+  fi
+  if awk -v l="$load" -v c="$cores" 'BEGIN {exit !(l > c)}'; then
+    why+="  the 1-minute load $load is above outpost's $cores cores"$'\n'
+  fi
+  [ -n "$why" ] || return 0
+  {
+    printf 'delegate: outpost is busy; start again after a wait returns:\n%s' "$why"
+    echo "active workers:"
+    awk 'NF {print "  " $1, $2 ($3 == "true" ? " heavy" : "")}' <<<"$rows"
+  } >&2
+  exit "$EX_TEMPFAIL"
+}
+
+cmd_prune() {
+  local apply=''
+  case $#:${1:-} in
+    0:) ;;
+    1:--apply) apply=1 ;;
+    *) usage ;;
+  esac
+
+  list_workers
 
   # The scan comes in on fd 3, since ssh and rex in the loop read stdin.
   local verdict name task clone path branch pr reason b state pruned=0 done_tasks=()
