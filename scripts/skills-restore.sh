@@ -9,12 +9,6 @@ set -euo pipefail
 LOCK="${SKILL_LOCK:-$HOME/.agents/.skill-lock.json}"
 [ -f "$LOCK" ] || { echo "no lock file at $LOCK" >&2; exit 1; }
 
-# Installed from upstream with `disable-model-invocation: true`, which limits them
-# to explicit /slash calls. Stripped so the model can reach for them on its own.
-MODEL_INVOCABLE=(
-  grill-me handoff implement improve-codebase-architecture to-spec to-tickets
-)
-
 # The agents the lock was built against. `--agent '*'` fans out to every agent the
 # CLI knows of — 79 at last count — and litters $HOME with dirs for unused ones.
 read -ra AGENTS <<<"$(jq -r '(.lastSelectedAgents // ["claude-code"]) | join(" ")' "$LOCK")"
@@ -47,12 +41,4 @@ for dir in "$HOME"/.agents/skills/*/; do
   dest="$HOME/.claude/skills/$name"
   [ -L "$dest" ] && rm -f "$dest"
   [ -e "$dest" ] || ln -s "../../.agents/skills/$name" "$dest"
-done
-
-for skill in "${MODEL_INVOCABLE[@]}"; do
-  f="$HOME/.agents/skills/$skill/SKILL.md"
-  if [ -f "$f" ]; then
-    # -i'' is BSD-only; the backup dance is what both seds agree on.
-    sed -i.bak '/^disable-model-invocation: true$/d' "$f" && rm -f "$f.bak"
-  fi
 done

@@ -48,4 +48,12 @@ fi
 echo "Installing skills..."
 "$DOTFILES_DIR/scripts/skills-restore.sh"
 
+if command -v claude >/dev/null 2>&1; then
+  echo "Installing pstack..."
+  claude plugin marketplace add cursor/plugins
+  claude plugin install pstack@cursor-plugins
+else
+  echo "Skipping pstack: Claude Code is not installed." >&2
+fi
+
 echo "Done! Restart your terminal."

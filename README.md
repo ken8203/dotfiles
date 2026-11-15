@@ -88,9 +88,6 @@ instead. `install.sh` runs it; run it directly after editing the lock by hand:
 ./scripts/skills-restore.sh
 ```
 
-It also strips `disable-model-invocation: true` from the handful of skills that
-should stay model-invocable — see the list at the top of the script.
-
 `simplify-review`, `rethink`, and `outpost-delegate` are not managed by the CLI and are committed
 as plain files under `agents/.agents/skills/`. The CLI only links its own installs into the agent
 directories, so the script symlinks anything in `~/.agents/skills/` that the lock
@@ -104,6 +101,25 @@ copy of that skill only collides with it. Install it per machine with:
 npx @vectorize-io/hindsight-coding-agents install claude-code --server self-hosted --api-url https://hindsight.dcard.io
 npx @vectorize-io/hindsight-coding-agents install codex --server self-hosted --api-url https://hindsight.dcard.io
 ```
+
+### pstack
+
+The development workflow is [pstack](https://github.com/cursor/plugins/tree/main/pstack),
+a Claude Code plugin rather than a skills.sh skill, so it lives outside the lock.
+`install.sh` adds the `cursor/plugins` marketplace and installs `pstack@cursor-plugins`;
+both steps are no-ops when already done. Start rigorous work with `/pstack:poteto-mode`.
+Third-party marketplaces do not auto-update, so pull new versions with:
+
+```bash
+claude plugin update pstack@cursor-plugins
+```
+
+`/pstack:setup-pstack` picks the model per role and writes
+`~/.claude/rules/pstack-models.md`, which is stowed from `agents/.claude/rules/` so every
+machine, outpost included, spawns pstack's subagents on the same models. Rerunning it
+writes through the link, so commit the diff it leaves.
+
+pstack ships no Codex build, so Codex runs without it.
 
 ## Cairn
 
