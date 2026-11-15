@@ -16,6 +16,7 @@
 
 ## 工作流程
 
+- Claude Code 的開發流程用 pstack（`/pstack:poteto-mode`）；它的原則或回覆風格跟這份檔案衝突時（如 never block on the human、不先提 plan），以這份檔案為準
 - 大改動先提 plan／proposal 再動手；設計決策給我編號或 A/B 選項讓我拍板
 - 有不確定就問，問到清楚為止
 - 我只是問問題時，回答就好，不要動手改 code

@@ -102,6 +102,20 @@ npx @vectorize-io/hindsight-coding-agents install claude-code --server self-host
 npx @vectorize-io/hindsight-coding-agents install codex --server self-hosted --api-url https://hindsight.dcard.io
 ```
 
+### pstack
+
+The development workflow is [pstack](https://github.com/cursor/plugins/tree/main/pstack),
+a Claude Code plugin rather than a skills.sh skill, so it lives outside the lock.
+`install.sh` adds the `cursor/plugins` marketplace and installs `pstack@cursor-plugins`;
+both steps are no-ops when already done. Start rigorous work with `/pstack:poteto-mode`.
+Third-party marketplaces do not auto-update, so pull new versions with:
+
+```bash
+claude plugin update pstack@cursor-plugins
+```
+
+pstack ships no Codex build, so Codex runs without it.
+
 ## Cairn
 
 [cairn](https://github.com/ken8203/cairn) (private) tracks each agent session's chain of
