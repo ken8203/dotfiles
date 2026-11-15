@@ -42,7 +42,7 @@ A failed stage can still have applied, so inspect remote state before rerunning 
 
 ## 1. Pick the worker
 
-Mirror the coordinator's harness and model, at `medium` effort, unless the user named another. The coordinator keeps the higher effort for planning and review.
+The worker defaults to Claude on `opus` (`claude-opus-5-5`) at `medium`. A hard task gets `high`, and the hardest go to `fable` (`claude-fable-5-2`). When quota forces a switch to Codex, the user names the model. The coordinator keeps its own higher effort for planning and review.
 
 ## 2. Write the brief
 
@@ -57,7 +57,7 @@ scripts/delegate start <task> --brief <local-dir> --kind claude|codex --model <m
   [--repo <local-repo> [--clone <clone>] [--branch <branch> [--base <base>]]]
 ```
 
-`--branch` makes it an implement task on a worktree of the clone, based on `<base>` (default: `HEAD` of `<local-repo>`); `--repo` alone is research in the clone; neither is research in the mailbox. `--heavy` marks test-heavy work, such as a full suite or Testcontainers, and is kept in `.task.json`. Done when it prints a `status`, normally `"working"`.
+`--branch` makes it an implement task on a worktree of the clone, based on `<base>` (default: `HEAD` of `<local-repo>`); `--repo` alone is research in the clone; neither is research in the mailbox. `--heavy` marks test-heavy work, such as a full suite or Testcontainers, and is kept in `.task.json`. When pstack is installed on outpost, the launch prompt makes the worker a poteto-mode delegate and gives it the absolute path of the newest `poteto-mode/SKILL.md` there, which a Codex worker can read too. Done when it prints a `status`, normally `"working"`.
 
 Parallel workers have run outpost out of memory, so before it touches anything `start` counts the active workers, those `working` or `blocked` on any backend. It refuses with exit code 75 and lists them when 3 or more are active, when the new task is heavy and a heavy one is active, or when outpost's 1-minute load is above its core count. Queue a refused task and start it again after a wait returns.
 

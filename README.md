@@ -119,6 +119,9 @@ claude plugin update pstack@cursor-plugins
 machine, outpost included, spawns pstack's subagents on the same models. Rerunning it
 writes through the link, so commit the diff it leaves.
 
+`~/.claude/rules/pstack-outpost.md`, stowed the same way, maps poteto-mode's playbooks onto
+`outpost-delegate` for the local coordinator; a worker on outpost ignores it.
+
 pstack ships no Codex build, so Codex runs without it.
 
 ## Cairn

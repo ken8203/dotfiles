@@ -391,7 +391,8 @@ cmd_start() {
     '{repo: $repo, clone: $clone, branch: $branch, base: $base,
       backend: $backend, kind: $kind, model: $model, effort: $effort, cwd: $cwd, heavy: $heavy}')
 
-  COPYFILE_DISABLE=1 tar --no-xattrs -C "$brief" -cf - . | remote '
+  local skill
+  skill=$(COPYFILE_DISABLE=1 tar --no-xattrs -C "$brief" -cf - . | remote '
 task=$1 clone=$2 branch=$3 kind=$4 meta=$5
 mb='"$ROOT"'/delegate/$task
 stage=check
@@ -415,11 +416,19 @@ if [ -n "$branch" ]; then
   stage="worktree add"
   git -C "$clone" worktree add -q -b "$branch" "$clone.$task" "refs/delegate/$task"
 fi
-' "$task" "$clone" "$branch" "$kind" "$meta"
 
-  "${backend}_launch" "$task" "$cwd" \
-    "Read $ROOT/delegate/$task/brief.md and follow it. Reply DONE when REPORT.md is written." \
-    "$kind" "${args[@]}" |
+stage=skill
+shopt -s nullglob
+set -- ~/.claude/plugins/cache/*/pstack/*/skills/poteto-mode/SKILL.md
+[ $# -eq 0 ] || printf "%s\n" "$@" | awk -F/ "{print \$(NF - 3), \$0}" | sort -V | tail -n 1 | cut -d" " -f2-
+' "$task" "$clone" "$branch" "$kind" "$meta")
+
+  local prompt="Read $ROOT/delegate/$task/brief.md and follow it. Reply DONE when REPORT.md is written."
+  # An absolute path, so a Codex worker can read it too.
+  [ -z "$skill" ] || prompt="You are a poteto-mode delegate; the coordinator owns the playbook. \
+Read $skill in full, including its Principles index, before any work. $prompt"
+
+  "${backend}_launch" "$task" "$cwd" "$prompt" "$kind" "${args[@]}" |
     jq -c --arg cwd "$cwd" --arg backend "$backend" '{cwd: $cwd, backend: $backend} + .'
 }
 
