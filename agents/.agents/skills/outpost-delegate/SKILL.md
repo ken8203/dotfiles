@@ -46,7 +46,7 @@ Mirror the coordinator's harness and model, at `medium` effort, unless the user 
 
 ## 2. Write the brief
 
-Draft `brief.md` in a local temp directory from [`brief-template.md`](brief-template.md). The worker cannot ask mid-task, so settle open decisions with the user first. Done when every section is filled and Deliver names the exact branch or file coming back.
+Draft `brief.md` in a local temp directory from [`brief-template.md`](brief-template.md). The worker cannot ask mid-task, so settle open decisions with the user first. An implement brief keeps the template's Authorization, which makes the worker its PR's owner ([Owner and verifier](#owner-and-verifier)). Done when every section is filled and Deliver names the exact branch or file coming back.
 
 When several tasks belong to one initiative, write their shared context and decisions once in `delegate/<project>/common.md` and point each brief at it.
 
@@ -92,8 +92,16 @@ For implement it also fetches the branch into `refs/remotes/outpost/<branch>` an
 
 The report is the worker's claim; the evidence is the fact. Done when:
 
-- Implement: the fetched diff against the base is reviewed locally and matches the report.
+- Implement: a verifier passed at the PR's current head SHA, and you read that head's diff (`gh pr diff <n>`) and it matches the report. A push moves the head and needs both again.
 - Research: every conclusion the user will act on traces to a source you opened.
+
+## Owner and verifier
+
+An implement worker owns its PR. It pushes its branch, opens a draft PR, and keeps it green through rebases, CI reds, and bot review comments, force-pushing only its own branch and only with `--force-with-lease`. It never merges and never marks the PR ready. Its report names the PR URL and head SHA.
+
+Each reported PR head gets a fresh verifier at `high` from the other model family: Codex (`gpt-6-astra`, outpost's Codex default) verifies a Claude author, and Claude verifies a Codex author. Mailboxes outlive their tasks, so name it per round, `rv<n>-<task>`, shortening the task part to fit the 32-character limit. Fetch the PR head locally, then start it on a worktree there with `--repo <repo> --branch rv<n>-<task> --base <head-sha>`. Its brief makes it research: it runs `/code-review` (Codex: `/review`), plus `/security-review` when the change touches auth, permissions, external input, or secrets, and reports findings without editing, pushing, or commenting. Triage the findings and send the real ones to the owner as a [follow-up round](#follow-up-round). Clean the verifier once triaged and delete its `rv<n>-<task>` branch on outpost.
+
+Ask for merge authority once, at the design gate, as one of the numbered decisions. It stands for the whole program: the coordinator merges a PR once its required checks are green and a verifier passed at its current head SHA. Deploys and force-pushes to shared branches still pause for the user.
 
 ## Follow-up round
 

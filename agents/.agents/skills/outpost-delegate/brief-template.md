@@ -21,7 +21,11 @@ You are a worker on outpost. A coordinator session on the user's local machine o
 
 ## Authorization
 
-<Exactly what is allowed beyond local work, e.g. "commit on `<branch>`; no push, no PR, no deploy".>
+<Exactly what is allowed beyond local work. Research: "none". Implement, by default:>
+
+- Commit on `<branch>`, push it to origin, and open a draft PR for it.
+- Own the PR until it is green: rebase it, fix CI reds, and handle bot review comments. Force-push only `<branch>`, and only with `--force-with-lease`.
+- Never merge the PR, never mark it ready for review, and never deploy.
 
 ## Verify
 
@@ -29,7 +33,7 @@ You are a worker on outpost. A coordinator session on the user's local machine o
 
 ## Deliver
 
-- Implement: commits on `<branch>` in this worktree, grouped by meaning; the coordinator fetches them from here.
+- Implement: commits on `<branch>`, grouped by meaning, pushed, with its draft PR green and its bot review comments handled. `REPORT.md` names the PR URL and its head SHA.
 - Research: the findings, with a source for every claim, go in `REPORT.md`.
 
 Then write `/home/outpost/code/delegate/<task>/REPORT.md`, last, once the work is finished. The coordinator's wait returns on its first line, so that line is exactly `Outcome: done`, `Outcome: partial`, or `Outcome: blocked`. A note you leave before then, such as progress, must not start with `Outcome:`. After that line:
