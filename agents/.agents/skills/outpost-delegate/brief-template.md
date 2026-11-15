@@ -31,6 +31,8 @@ You are a worker on outpost. A coordinator session on the user's local machine o
 
 <Tests, commands, or sources that prove the goal is met.>
 
+Implement, always: before opening the PR, run `/simplify` (fallback `/simplify-review`) over the whole branch and fold its fixes into the commits they belong to. On a PR already open, run it the same way and fixup + autosquash.
+
 ## Deliver
 
 - Implement: commits on `<branch>`, grouped by meaning, pushed, with its draft PR green and its bot review comments handled. `REPORT.md` names the PR URL and its head SHA.
