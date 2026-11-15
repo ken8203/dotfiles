@@ -32,11 +32,10 @@ You are a worker on outpost. A coordinator session on the user's local machine o
 - Implement: commits on `<branch>` in this worktree, grouped by meaning; the coordinator fetches them from here.
 - Research: the findings, with a source for every claim, go in `REPORT.md`.
 
-Then write `/home/outpost/code/delegate/<task>/REPORT.md`:
+Then write `/home/outpost/code/delegate/<task>/REPORT.md`, last, once the work is finished. The coordinator's wait returns on its first line, so that line is exactly `Outcome: done`, `Outcome: partial`, or `Outcome: blocked`. A note you leave before then, such as progress, must not start with `Outcome:`. After that line:
 
-1. Outcome: done, partial, or blocked, in one line.
-2. What changed or what was found.
-3. Verification: commands run and their results.
-4. Open questions and anything out of scope you noticed.
+1. What changed or what was found.
+2. Verification: commands run and their results.
+3. Open questions and anything out of scope you noticed.
 
 When a decision outside this brief blocks you, record it under Open questions and stop there.

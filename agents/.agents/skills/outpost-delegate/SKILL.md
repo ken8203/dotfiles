@@ -67,7 +67,18 @@ Failed at `check` with no main clone or an untrusted one: hand the one-time setu
 scripts/delegate wait <task> <timeout-ms>
 ```
 
-In Claude Code, run it with `run_in_background`, so the coordinator is woken on completion and stays free to delegate more. It reconnects on its own when the tunnel drops. Done when the worker settles on `idle` or `done`. Any other state needs the user: read it with `scripts/delegate read <task>` and bring it to them. `blocked` is a question or approval UI to answer; `error` or `exited` is a worker that failed or quit.
+In Claude Code, run it with `run_in_background`, so the coordinator is woken on completion and stays free to delegate more. It reconnects on its own when the tunnel drops.
+
+It returns only on an outcome, as one JSON line such as `{"status":"done","report":"done"}`. It joins the agent's state from the backend with the report's outcome: `done`, `partial`, or `blocked` when `REPORT.md` is newer than `brief.md` and every `review-*.md` and its Outcome within the first 8 lines reads so, `none` otherwise. The template asks for `Outcome: done` as the first line, and the heading form workers drift to, `## 1. Outcome` over `**Done.** …`, counts too.
+
+| `status` | When | Next |
+|---|---|---|
+| `done` | the agent settled with a report for this round | `report: done`: step 5; `partial` or `blocked`: read its open questions and bring them to the user |
+| `blocked` | a question or approval UI holds it | read it and bring it to the user |
+| `error`, `exited` | the agent failed or quit; `report` says whether it finished first | read it; with a report other than `none`, as for `done` |
+| `stalled` | idle 15 minutes with no final report; under `ssh`, a run that ended without one | read it and decide |
+
+A working agent, or an idle one inside those 15 minutes, keeps it waiting: a worker idles while its background shells run, such as a CI watch, and wakes when they finish. Read any state but `done` with `scripts/delegate read <task>`.
 
 ## 5. Collect and verify
 

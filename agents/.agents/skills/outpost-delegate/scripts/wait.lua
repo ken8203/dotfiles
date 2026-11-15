@@ -8,21 +8,28 @@ for s in rex.args.states:gmatch("[^,]+") do
 end
 local deadline = os.time() + tonumber(rex.args.timeout)
 
-local blocks = assert(rex.call("session.list_blocks", { session_id = rex.session_id }))
-local block = blocks.blocks[1].block_id
+-- Rex holds no status record once the agent has exited, since its terminal
+-- closes with it or holds a bare shell once Rex restores the session, nor for a
+-- new agent until it first reports.
+local function record()
+  local block = assert(rex.call("session.list_blocks", { session_id = rex.session_id })).blocks[1]
+  return block and assert(rex.block.call(terminal, "program_status", { block_id = block.block_id })).records[1]
+end
 
-local function settled(record)
-  if record and wanted[record.state] then
-    print(string.format('{"status":"%s"%s}', record.state,
-      record.kind and string.format(',"kind":"%s"', record.kind) or ""))
+local function settled(r)
+  local state = r and r.state or "exited"
+  if wanted[state] then
+    print(string.format('{"status":"%s"%s}', state,
+      r and r.kind and string.format(',"kind":"%s"', r.kind) or ""))
     rex.stop(0)
   end
 end
 
 -- Re-read the status between short waits, so a change that lands before the
--- wait starts is still seen.
+-- wait starts is still seen. An exit raises another event than the one waited
+-- on, so it shows up at the next re-read.
 while os.time() < deadline do
-  settled(assert(rex.block.call(terminal, "program_status", { block_id = block })).records[1])
+  settled(record())
   local ev = rex.wait("terminal.program_status_changed", function(e)
     return e.record and wanted[e.record.state]
   end, math.min(30, deadline - os.time()))

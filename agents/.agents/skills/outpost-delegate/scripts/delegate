@@ -52,10 +52,28 @@ rx() {
   env -u REX_SESSION -u REX_BLOCK rex -S "$HOST" "$@"
 }
 
+# The cloudflared tunnel under the Rex forward drops now and then while the
+# worker keeps running, so it retries until the deadline.
+rex_wait() {
+  local left rc
+  while :; do
+    left=$(($2 - SECONDS))
+    [ "$left" -gt 0 ] || return 124
+    rc=0
+    rx "do" -s "$1" "$WAIT" timeout="$left" states="$3" || rc=$?
+    case $rc in 0 | 124) return "$rc" ;; esac
+    if rx ls >/dev/null 2>&1 && ! rx session inspect "$1" >/dev/null 2>&1; then
+      die "no Rex session $1 on $HOST"
+    fi
+    echo "delegate: Rex on $HOST unreachable, retrying" >&2
+    sleep 5
+  done
+}
+
 # Waits up to $2 seconds for the worker to report one of the states in $3.
 rex_await() {
   local rc=0
-  rx "do" -s "$1" "$WAIT" timeout="$2" states="$3" || rc=$?
+  rex_wait "$1" $((SECONDS + $2)) "$3" || rc=$?
   [ "$rc" -ne 124 ] || die "$1 reported none of $3 within $2s; look with: delegate read $1"
   return "$rc"
 }
@@ -68,22 +86,6 @@ rex_launch() {
   # started. Startup hooks hold a new agent briefly; a trust prompt holds it
   # until the timeout.
   rex_await "$task" 30 working,blocked,done,error
-}
-
-# The cloudflared tunnel under the Rex forward drops now and then while the
-# worker keeps running, so retry until the deadline.
-rex_wait() {
-  local left
-  while :; do
-    left=$(($2 - SECONDS))
-    [ "$left" -gt 0 ] || die "timed out waiting for $1"
-    rex_await "$1" "$left" idle,done,blocked,error && return
-    if rx ls >/dev/null 2>&1 && ! rx session inspect "$1" >/dev/null 2>&1; then
-      die "no Rex session $1 on $HOST"
-    fi
-    echo "delegate: Rex on $HOST unreachable, retrying" >&2
-    sleep 5
-  done
 }
 
 rex_read() {
@@ -129,7 +131,7 @@ hc_await() {
     fi
     t=$((deadline - SECONDS))
     hcx wait --json "$HOST/$1" --timeout $((t > 60 ? 60 : t < 1 ? 1 : t)) >/dev/null 2>&1 || true
-    sleep 1
+    sleep 5
   done
   return 124
 }
@@ -149,10 +151,7 @@ hc_launch() {
 }
 
 hc_wait() {
-  local rc=0
-  hc_await "$1" $(($2 - SECONDS)) idle,done,blocked,error || rc=$?
-  [ "$rc" -ne 124 ] || die "timed out waiting for $1"
-  return "$rc"
+  hc_await "$1" $(($2 - SECONDS)) "$3"
 }
 
 hc_read() {
@@ -233,17 +232,17 @@ ssh_launch() {
 }
 
 # The cloudflared tunnel drops long ssh sessions (exit 255) while the worker
-# keeps running, so reconnect until the deadline.
+# keeps running, so it reconnects until the deadline.
 ssh_wait() {
   local left rc out
   while :; do
     left=$(($2 - SECONDS))
-    [ "$left" -gt 0 ] || die "timed out waiting for $1"
+    [ "$left" -gt 0 ] || return 124
     rc=0
     out=$(ssh_poll "$1" "$left") || rc=$?
     if [ "$rc" -ne 255 ]; then
       [ "$rc" -eq 0 ] || return "$rc"
-      [ "$out" != '{"status":"working"}' ] || die "timed out waiting for $1"
+      [ "$out" != '{"status":"working"}' ] || return 124
       echo "$out"
       return
     fi
@@ -415,11 +414,76 @@ fi
     jq -c --arg cwd "$cwd" --arg backend "$backend" '{cwd: $cwd, backend: $backend} + .'
 }
 
+# Workers also write the Outcome as a heading over its value, e.g. "## 1. Outcome"
+# then "**Done.** PR #12", so that form counts too.
+report_state() {
+  remote '
+mb='"$ROOT"'/delegate/$1 s=none
+stage=report
+if [ -f "$mb/REPORT.md" ] && o=$(awk "
+NF && n++ < 8 {
+  l = tolower(\$0); sub(/^[#*_ 0-9.-]+/, \"\", l)
+  if (want) { v = l; exit }
+  if (l ~ /^(outcome|結果)/) { sub(/^(outcome|結果)[*_ ]*(:|：)?[*_ ]*/, \"\", l); if (l != \"\") { v = l; exit }; want = 1 }
+}
+END { if (!match(v, /^(done|partial|blocked)/)) exit 1; print substr(v, 1, RLENGTH) }" "$mb/REPORT.md"); then
+  s=$o
+  for f in "$mb"/brief.md "$mb"/review-*.md; do
+    [ ! -e "$f" ] || [ "$mb/REPORT.md" -nt "$f" ] || s=none
+  done
+fi
+echo "$s"
+' "$1"
+}
+
+# A worker idles while its background shells run, such as a CI watch, and
+# wakes when they finish.
+STALL_AFTER=$((15 * 60))
+
 cmd_wait() {
   [ $# -eq 2 ] || usage
-  local b
-  b=$(backend "$(meta "$1")")
-  "${b}_wait" "$1" $(($2 / 1000))
+  local task=$1 deadline=$((SECONDS + $2 / 1000)) b grace=$STALL_AFTER idle='' states limit out rc status report
+  b=$(backend "$(meta "$task")")
+  # A headless run that has ended never wakes.
+  [ "$b" != ssh ] || grace=0
+  while :; do
+    if [ -n "$idle" ]; then
+      states=working,blocked,error,exited limit=$((idle + grace))
+      [ "$limit" -lt "$deadline" ] || limit=$deadline
+    else
+      states=idle,done,blocked,error,exited limit=$deadline
+    fi
+    rc=0
+    out=$("${b}_wait" "$task" "$limit" "$states") || rc=$?
+    if [ "$rc" -eq 124 ]; then
+      [ "$limit" -lt "$deadline" ] || die "timed out waiting for $task"
+      out='{"status":"stalled"}'
+    elif [ "$rc" -ne 0 ]; then
+      return "$rc"
+    fi
+    status=$(jq -r .status <<<"$out")
+    case $status in
+      working)
+        idle=''
+        continue
+        ;;
+      blocked)
+        echo "$out"
+        return
+        ;;
+    esac
+    report=$(report_state "$task")
+    case $status:$report in
+      error:* | exited:* | stalled:none) ;;
+      *:none)
+        idle=${idle:-$SECONDS}
+        continue
+        ;;
+      *) out='{"status":"done"}' ;;
+    esac
+    jq -c --arg r "$report" '. + {report: $r}' <<<"$out"
+    return
+  done
 }
 
 cmd_read() {
@@ -577,14 +641,12 @@ worker_state() {
       elif ! grep -qxF -- "$2" <<<"$rex_names"; then
         echo none
       else
-        # A session left with no status is the shell its agent exited to.
-        local out rc=0
-        out=$(rx "do" -s "$2" "$WAIT" timeout=1 states=idle,done,working,blocked,error 2>/dev/null) || rc=$?
-        case $rc in
-          0) jq -r .status <<<"$out" ;;
-          124) echo exited ;;
-          *) echo unknown ;;
-        esac
+        local out
+        if out=$(rx "do" -s "$2" "$WAIT" timeout=1 states=idle,done,working,blocked,error,exited 2>/dev/null); then
+          jq -r .status <<<"$out"
+        else
+          echo unknown
+        fi
       fi
       ;;
     hc)
