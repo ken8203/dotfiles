@@ -114,6 +114,11 @@ Third-party marketplaces do not auto-update, so pull new versions with:
 claude plugin update pstack@cursor-plugins
 ```
 
+`/pstack:setup-pstack` picks the model per role and writes
+`~/.claude/rules/pstack-models.md`, which is stowed from `agents/.claude/rules/` so every
+machine, outpost included, spawns pstack's subagents on the same models. Rerunning it
+writes through the link, so commit the diff it leaves.
+
 pstack ships no Codex build, so Codex runs without it.
 
 ## Cairn
