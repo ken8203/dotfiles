@@ -42,7 +42,7 @@ A failed stage can still have applied, so inspect remote state before rerunning 
 
 ## 1. Pick the worker
 
-The worker defaults to Claude on `opus` (`claude-opus-5-5`) at `medium`. A hard task gets `high`, and the hardest go to `fable` (`claude-fable-5-2`). When quota forces a switch to Codex, the user names the model. The coordinator keeps its own higher effort for planning and review.
+The worker defaults to Claude on `opus` (`claude-opus-5-5`) at `medium`. A hard task gets `high`, and the hardest get `xhigh`. Never use `fable`, which costs too much. When quota forces a switch to Codex, the user names the model. The coordinator keeps its own higher effort for planning and review.
 
 ## 2. Write the brief
 

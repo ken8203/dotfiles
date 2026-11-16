@@ -7,11 +7,11 @@ bug-fix: opus xhigh
 perf-issue: opus xhigh
 hillclimb: opus xhigh
 judgment and prose: opus xhigh
-hardest tasks: fable max
+hardest tasks: opus max
 reflect tooling: opus high
 reflect judgment, divergent, synthesizer: opus xhigh
-arena runners: fable high, opus high, inherit-parent
-arena cross-judge pool: fable high, opus high, inherit-parent
+arena runners: sonnet high, opus high, inherit-parent
+arena cross-judge pool: sonnet high, opus high, inherit-parent
 swarm workers: opus high
-architect runners: fable high, opus high, inherit-parent
-interrogate reviewers: fable high, opus high, inherit-parent
+architect runners: sonnet high, opus high, inherit-parent
+interrogate reviewers: sonnet high, opus high, inherit-parent
