@@ -10,8 +10,8 @@ judgment and prose: opus xhigh
 hardest tasks: opus max
 reflect tooling: opus high
 reflect judgment, divergent, synthesizer: opus xhigh
-arena runners: opus xhigh, opus high, opus high
-arena cross-judge pool: opus xhigh, opus high, opus high
+arena runners: opus xhigh, opus high, inherit-parent
+arena cross-judge pool: opus xhigh, opus high, inherit-parent
 swarm workers: opus high
-architect runners: opus xhigh, opus high, opus high
-interrogate reviewers: opus xhigh, opus high, opus high
+architect runners: opus xhigh, opus high, inherit-parent
+interrogate reviewers: opus xhigh, opus high, inherit-parent
