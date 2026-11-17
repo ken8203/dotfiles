@@ -53,13 +53,11 @@ When several tasks belong to one initiative, write their shared context and deci
 ## 3. Start
 
 ```bash
-scripts/delegate start <task> --brief <local-dir> --kind claude|codex --model <model> --effort <effort> [--heavy] \
+scripts/delegate start <task> --brief <local-dir> --kind claude|codex --model <model> --effort <effort> \
   [--repo <local-repo> [--clone <clone>] [--branch <branch> [--base <base>]]]
 ```
 
-`--branch` makes it an implement task on a worktree of the clone, based on `<base>` (default: `HEAD` of `<local-repo>`); `--repo` alone is research in the clone; neither is research in the mailbox. `--heavy` marks test-heavy work, such as a full suite or Testcontainers, and is kept in `.task.json`. When pstack is installed on outpost, the launch prompt makes the worker a poteto-mode delegate and gives it the absolute path of the newest `poteto-mode/SKILL.md` there, which a Codex worker can read too. Done when it prints a `status`, normally `"working"`.
-
-Parallel workers have run outpost out of memory, so before it touches anything `start` counts the active workers, those `working` or `blocked` on any backend. It refuses with exit code 75 and lists them when 3 or more are active, when the new task is heavy and a heavy one is active, or when outpost's 1-minute load is above its core count. Queue a refused task and start it again after a wait returns.
+`--branch` makes it an implement task on a worktree of the clone, based on `<base>` (default: `HEAD` of `<local-repo>`); `--repo` alone is research in the clone; neither is research in the mailbox. When pstack is installed on outpost, the launch prompt makes the worker a poteto-mode delegate and gives it the absolute path of the newest `poteto-mode/SKILL.md` there, which a Codex worker can read too. Done when it prints a `status`, normally `"working"`.
 
 Failed at `check` with no main clone or an untrusted one: hand the one-time setup above to the user. Reported no state within 30s: the worker is held at startup; look with `scripts/delegate read <task>` and bring it to the user. Backend unreachable: see the table.
 
