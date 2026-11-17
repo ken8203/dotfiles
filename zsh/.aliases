@@ -191,14 +191,16 @@ RC
 # Usage: outpost-up [name]
 outpost-up() {
   emulate -L zsh
-  local name=$1 host=outpost${1:+-$1} app
+  local name=$1 host=outpost${1:+-$1} app st
   for app in outpost-api.dcard.io outpost-ssh.dcard.io; do
     cloudflared access token --app "https://$app" >/dev/null 2>&1 && continue
     cloudflared access login --app "https://$app" >/dev/null || return 1
   done
   # claim, not start: start fails once the instance has been released, and
-  # claim also resumes a stopped one.
-  if ! outpost status $name | grep -q '^Status *running$'; then
+  # claim also resumes a stopped one. A running instance can still be stuck
+  # mounting the disk, where ssh only times out, so leave that to claim to report.
+  st=$(outpost status $name)
+  if ! grep -q '^Status *running$' <<<"$st" || grep -q '^Data disk *not ready$' <<<"$st"; then
     outpost claim $name --instance-type e6-standard-8 || return 1
   fi
   if [[ -n ${HC_TERMINAL_SOCKET:-} ]]; then
