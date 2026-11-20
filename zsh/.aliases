@@ -158,23 +158,29 @@ EOF
 
 # Make an Outpost instance the Herdr machine of the same name. hc installs itself
 # in ~/.local/bin there, on the data disk, and like Rex its terminals start in
-# the image's bash, so hand them to zsh too.
+# the image's bash, so hand them to zsh too. A machine added for an instance
+# since replaced stays bound to that instance's core, so add it again.
 # Usage: outpost-hc [host]
 outpost-hc() {
   emulate -L zsh
-  local host=${1:-outpost} machine i
+  local host=${1:-outpost} hostname machine i
+  hostname=$(ssh "$host" 'hostname; grep -qs HC_TERMINAL_ID ~/.bashrc || cat >>~/.bashrc' <<'RC'
+
+# Herdr starts terminals in the passwd shell, which every new Outpost instance resets to bash.
+[[ $- == *i* && -n ${HC_TERMINAL_ID:-} ]] && exec zsh -l
+RC
+  ) || return 1
+
   machine=$(herdr-core machine ls --json | jq -c --arg h "$host" '.machines[] | select(.name == $h)') || return 1
+  if [[ -n $machine && $(jq -r .host <<<"$machine") != $hostname ]]; then
+    herdr-core machine rm "$host" >/dev/null || return 1
+    machine=
+  fi
   if [[ -z $machine ]]; then
     herdr-core machine add "$host" --install >/dev/null || return 1
   elif [[ $(jq -r .version <<<"$machine") != $(herdr-core --version | awk '{ print $2 }') ]]; then
     herdr-core machine update "$host" >/dev/null || return 1
   fi
-
-  ssh "$host" 'grep -qs HC_TERMINAL_ID ~/.bashrc || cat >>~/.bashrc' <<'RC' || return 1
-
-# Herdr starts terminals in the passwd shell, which every new Outpost instance resets to bash.
-[[ $- == *i* && -n ${HC_TERMINAL_ID:-} ]] && exec zsh -l
-RC
 
   for i in {1..30}; do
     [[ $(herdr-core machine ls --json | jq -r --arg h "$host" '.machines[] | select(.name == $h) | .state') == connected ]] && return
